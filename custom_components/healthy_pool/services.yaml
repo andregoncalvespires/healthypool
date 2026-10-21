@@ -1,0 +1,76 @@
+registrar_medicao:
+  name: Registrar medição
+  description: Informa de uma vez a alcalinidade, o pH e o cloro medidos e atualiza a data da medição.
+  fields:
+    alcalinidade:
+      name: Alcalinidade total
+      description: Alcalinidade total em ppm.
+      example: 100
+      selector:
+        number:
+          min: 0
+          max: 300
+          unit_of_measurement: ppm
+          mode: box
+    ph:
+      name: pH
+      description: pH medido.
+      example: 7.4
+      selector:
+        number:
+          min: 5
+          max: 9
+          step: 0.1
+          mode: box
+    cloro:
+      name: Cloro livre
+      description: Cloro livre em ppm.
+      example: 3
+      selector:
+        number:
+          min: 0
+          max: 10
+          step: 0.1
+          unit_of_measurement: ppm
+          mode: box
+    data_medicao:
+      name: Data da medição
+      description: Se vazio, usa o momento atual.
+      selector:
+        datetime:
+    entry_id:
+      name: ID da piscina
+      description: Só necessário se houver mais de uma piscina configurada.
+      selector:
+        text:
+
+registrar_etapa:
+  name: Registrar etapa
+  description: Registra uma aplicação (produto e quantidade). Sem produto ou quantidade, usa a etapa sugerida.
+  fields:
+    produto:
+      name: Produto aplicado
+      description: Se vazio, usa o produto escolhido ou o da etapa atual.
+      selector:
+        select:
+          options:
+            - pH Certo
+            - pH Mais
+            - pH Menos
+            - Cloro granulado
+            - Algicida
+            - Clarificante
+            - Removedor de metais (Genquest)
+    quantidade:
+      name: Quantidade aplicada
+      description: Em g (pH Certo, pH Mais, cloro) ou mL (os demais). Se vazia, usa a dose sugerida.
+      selector:
+        number:
+          min: 0
+          max: 100000
+          mode: box
+    entry_id:
+      name: ID da piscina
+      description: Só necessário se houver mais de uma piscina configurada.
+      selector:
+        text:

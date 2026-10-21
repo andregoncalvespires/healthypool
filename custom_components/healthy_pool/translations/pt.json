@@ -1,0 +1,156 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Healthy Pool: geometria da piscina",
+        "description": "Escolha o formato. Redonda: comprimento = diâmetro e profundidade = profundidade média. Oval: comprimento e largura. Inclinada: profundidade da área rasa até a funda. Informar o volume direto: só o volume importa e os demais campos são ignorados. No retangular, zere a área rasa e a escada para uma piscina simples.",
+        "data": {
+          "shape": "Formato da piscina",
+          "manual_volume_m3": "Volume informado (m³)",
+          "name": "Nome",
+          "length_cm": "Comprimento total",
+          "width_cm": "Largura",
+          "shallow_length_cm": "Comprimento da área rasa",
+          "shallow_depth_cm": "Profundidade da área rasa (da borda ao piso)",
+          "deep_depth_cm": "Profundidade da parte funda (da borda ao piso)",
+          "stair_steps": "Número de degraus da escada",
+          "stair_tread_cm": "Largura (pisada) de cada degrau",
+          "stair_width_cm": "Largura da escada",
+          "temperature_entity": "Sensor de temperatura da água (opcional)"
+        }
+      },
+      "limits": {
+        "title": "Healthy Pool: faixas e metas",
+        "description": "Faixas aceitáveis e metas de correção. Os padrões seguem os rótulos da Genco.",
+        "data": {
+          "alk_min": "Alcalinidade mínima",
+          "alk_target": "Alcalinidade alvo",
+          "alk_max": "Alcalinidade máxima",
+          "ph_min": "pH mínimo",
+          "ph_target": "pH alvo",
+          "ph_max": "pH máximo",
+          "cl_min": "Cloro livre mínimo",
+          "cl_target": "Cloro livre alvo",
+          "cl_max": "Cloro livre máximo",
+          "ph_up_factor": "Fator de ajuste da dose de pH Mais",
+          "algaecide_interval_days": "Intervalo do algicida de manutenção",
+          "clarifier_interval_days": "Intervalo do clarificante preventivo"
+        },
+        "data_description": {
+          "ph_up_factor": "1,0 usa a dose calculada. Se o pH subir pouco, aumente; se passar do alvo, diminua.",
+          "algaecide_interval_days": "O rótulo Genco recomenda aplicação semanal (7 dias).",
+          "clarifier_interval_days": "O rótulo Genco recomenda uso preventivo semanal (7 dias)."
+        }
+      }
+    },
+    "error": {
+      "invalid_geometry": "Medidas incoerentes para o formato escolhido. Em 'Informar o volume direto' o volume precisa ser maior que zero; nos demais, comprimento e profundidade maiores que zero; no retangular, a área rasa menor que o comprimento e a escada dentro da área rasa.",
+      "invalid_limits": "Cada faixa precisa seguir mínimo < alvo < máximo."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Healthy Pool: geometria da piscina",
+        "description": "Escolha o formato. Redonda: comprimento = diâmetro e profundidade = profundidade média. Oval: comprimento e largura. Inclinada: profundidade da área rasa até a funda. Informar o volume direto: só o volume importa e os demais campos são ignorados. No retangular, zere a área rasa e a escada para uma piscina simples.",
+        "data": {
+          "shape": "Formato da piscina",
+          "manual_volume_m3": "Volume informado (m³)",
+          "length_cm": "Comprimento total",
+          "width_cm": "Largura",
+          "shallow_length_cm": "Comprimento da área rasa",
+          "shallow_depth_cm": "Profundidade da área rasa (da borda ao piso)",
+          "deep_depth_cm": "Profundidade da parte funda (da borda ao piso)",
+          "stair_steps": "Número de degraus da escada",
+          "stair_tread_cm": "Largura (pisada) de cada degrau",
+          "stair_width_cm": "Largura da escada",
+          "temperature_entity": "Sensor de temperatura da água (opcional)"
+        }
+      },
+      "limits": {
+        "title": "Healthy Pool: faixas e metas",
+        "description": "Faixas aceitáveis e metas de correção.",
+        "data": {
+          "alk_min": "Alcalinidade mínima",
+          "alk_target": "Alcalinidade alvo",
+          "alk_max": "Alcalinidade máxima",
+          "ph_min": "pH mínimo",
+          "ph_target": "pH alvo",
+          "ph_max": "pH máximo",
+          "cl_min": "Cloro livre mínimo",
+          "cl_target": "Cloro livre alvo",
+          "cl_max": "Cloro livre máximo",
+          "ph_up_factor": "Fator de ajuste da dose de pH Mais",
+          "algaecide_interval_days": "Intervalo do algicida de manutenção",
+          "clarifier_interval_days": "Intervalo do clarificante preventivo"
+        },
+        "data_description": {
+          "ph_up_factor": "1,0 usa a dose calculada. Se o pH subir pouco, aumente; se passar do alvo, diminua.",
+          "algaecide_interval_days": "O rótulo Genco recomenda aplicação semanal (7 dias).",
+          "clarifier_interval_days": "O rótulo Genco recomenda uso preventivo semanal (7 dias)."
+        }
+      }
+    },
+    "error": {
+      "invalid_geometry": "Medidas incoerentes para o formato escolhido. Em 'Informar o volume direto' o volume precisa ser maior que zero; nos demais, comprimento e profundidade maiores que zero; no retangular, a área rasa menor que o comprimento e a escada dentro da área rasa.",
+      "invalid_limits": "Cada faixa precisa seguir mínimo < alvo < máximo."
+    }
+  },
+  "services": {
+    "registrar_medicao": {
+      "name": "Registrar medição",
+      "description": "Informa de uma vez a alcalinidade, o pH e o cloro medidos e atualiza a data da medição.",
+      "fields": {
+        "alcalinidade": {
+          "name": "Alcalinidade total",
+          "description": "Alcalinidade total em ppm."
+        },
+        "ph": {
+          "name": "pH",
+          "description": "pH medido."
+        },
+        "cloro": {
+          "name": "Cloro livre",
+          "description": "Cloro livre em ppm."
+        },
+        "data_medicao": {
+          "name": "Data da medição",
+          "description": "Se vazio, usa o momento atual."
+        },
+        "entry_id": {
+          "name": "ID da piscina",
+          "description": "Só necessário se houver mais de uma piscina."
+        }
+      }
+    },
+    "registrar_etapa": {
+      "name": "Registrar etapa",
+      "description": "Registra uma aplicação (produto e quantidade). Sem produto ou quantidade, usa a etapa sugerida.",
+      "fields": {
+        "produto": {
+          "name": "Produto aplicado",
+          "description": "Se vazio, usa o produto escolhido ou o da etapa atual."
+        },
+        "quantidade": {
+          "name": "Quantidade aplicada",
+          "description": "Em g (pH Certo, pH Mais, cloro) ou mL (os demais). Se vazia, usa a dose sugerida."
+        },
+        "entry_id": {
+          "name": "ID da piscina",
+          "description": "Só necessário se houver mais de uma piscina configurada."
+        }
+      }
+    }
+  },
+  "selector": {
+    "shape": {
+      "options": {
+        "retangular": "Retangular (com área rasa e escada opcionais)",
+        "inclinada": "Retangular com fundo inclinado",
+        "redonda": "Redonda",
+        "oval": "Oval",
+        "manual": "Informar o volume direto"
+      }
+    }
+  }
+}

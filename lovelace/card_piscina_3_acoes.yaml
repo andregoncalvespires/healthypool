@@ -1,0 +1,51 @@
+# Grupo 3 de 3: AÇÕES E ORIENTAÇÕES (Healthy Pool)
+# Etapa atual, orientação de aplicação (ordem e modo), resultado do tratamento e histórico.
+# Cole em um card "Manual" de uma seção. O registro das etapas fica no grupo 1.
+# Requer o Mushroom (mushroom-template-card) e o browser_mod (pop-up "Como aplicar").
+type: vertical-stack
+cards:
+  - type: heading
+    heading: Ações e orientações
+    heading_style: title
+    icon: mdi:clipboard-list-outline
+  - type: custom:mushroom-template-card
+    primary: "{{ states('sensor.piscina_etapa_atual') }}"
+    secondary: >-
+      {% set rest = state_attr('sensor.piscina_etapa_atual', 'etapas_restantes') or [] %}
+      {% if rest | length > 1 %}Depois: {{ rest[1:] | join(', ') }}{% else %}Registre a etapa ao aplicar{% endif %}
+    icon: mdi:stairs
+    icon_color: blue
+    fill_container: true
+  # "Como aplicar" abre em um pop-up (browser_mod) para o card não ficar grande demais.
+  - type: custom:mushroom-template-card
+    entity: sensor.piscina_instrucoes_de_aplicacao
+    primary: Como aplicar
+    secondary: "{{ states('sensor.piscina_instrucoes_de_aplicacao') }}"
+    icon: mdi:clipboard-list-outline
+    icon_color: >-
+      {{ 'orange' if state_attr('sensor.piscina_instrucoes_de_aplicacao', 'pendentes') | int(0) > 0 else 'green' }}
+    fill_container: true
+    tap_action:
+      action: fire-dom-event
+      browser_mod:
+        service: browser_mod.popup
+        data:
+          deviceID: this
+          title: Como aplicar
+          size: wide
+          content:
+            type: markdown
+            content: >-
+              {{ state_attr('sensor.piscina_instrucoes_de_aplicacao', 'instrucoes') }}
+              {% if has_value('sensor.piscina_remedir_a_partir_de') %}
+
+              **Remedir a partir de** {{ as_timestamp(states('sensor.piscina_remedir_a_partir_de')) | timestamp_custom('%d/%m %H:%M') }}
+              {% endif %}
+  - type: markdown
+    title: Resultado do tratamento
+    content: >-
+      {{ state_attr('sensor.piscina_resultado_do_tratamento', 'texto') }}
+  - type: markdown
+    title: Histórico (últimos 20)
+    content: >-
+      {{ state_attr('sensor.piscina_historico_de_tratamentos', 'resumo') }}

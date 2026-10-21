@@ -1,0 +1,61 @@
+# Grupo 1 de 3: ENTRADA DE INFORMAÇÃO E MEDIÇÕES (Healthy Pool)
+# Onde você digita o que mediu e descreve a água. Cole em um card "Manual" de uma seção.
+# Requer o Mushroom (mushroom-select-card). Os entity_id assumem que a integração se chama "Piscina".
+type: vertical-stack
+cards:
+  - type: heading
+    heading: Entrada e medições
+    heading_style: title
+    icon: mdi:pencil-ruler
+  # --- Medições (digite aqui o resultado do kit de gotas) ----------------------
+  - type: entities
+    title: Medições
+    show_header_toggle: false
+    entities:
+      - entity: number.piscina_alcalinidade_total
+        name: Alcalinidade
+      - entity: number.piscina_ph
+        name: pH
+      - entity: number.piscina_cloro_livre
+        name: Cloro livre
+      - entity: datetime.piscina_data_da_medicao
+        name: Data da medição
+      - entity: number.piscina_altura_livre
+        name: Altura livre (água até a borda)
+
+  - type: custom:mushroom-select-card
+    entity: select.piscina_aspecto_da_agua
+    name: Aspecto da água
+    icon: mdi:water-opacity
+
+  # --- Registrar o que foi aplicado (etapa a etapa) ---------------------------------
+  # O produto e a quantidade já vêm com a etapa sugerida; ajuste se aplicou diferente.
+  - type: entities
+    title: Registrar aplicação
+    show_header_toggle: false
+    entities:
+      - entity: select.piscina_produto_aplicado
+        name: Produto aplicado
+      - entity: number.piscina_quantidade_aplicada
+        name: Quantidade aplicada
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-entity-card
+        entity: button.piscina_registrar_etapa
+        name: Registrar etapa
+        icon: mdi:check-circle-outline
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.piscina_registrar_etapa
+      - type: custom:mushroom-entity-card
+        entity: button.piscina_pular_etapa
+        name: Pular etapa
+        secondary_info: none
+        icon: mdi:skip-next-circle-outline
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.piscina_pular_etapa

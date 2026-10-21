@@ -1,0 +1,91 @@
+# Grupo 2 de 3: SENSORES INDICATIVOS (Healthy Pool)
+# Situação geral, correção de cada parâmetro e situação de algicida, clarificante e removedor de metais.
+# As correções vêm dos atributos do sensor de qualidade da água, sem usar sensor.piscina_correcao_*.
+# Só leitura. Cole em um card "Manual" de uma seção. Requer o Mushroom (mushroom-template-card).
+type: vertical-stack
+cards:
+  - type: heading
+    heading: Indicadores
+    heading_style: title
+    icon: mdi:gauge
+  # --- Situação geral -------------------------------------------------------
+  - type: custom:mushroom-template-card
+    entity: sensor.piscina_qualidade_da_agua
+    primary: "{{ states('sensor.piscina_qualidade_da_agua') }}"
+    secondary: >-
+      {{ states('sensor.piscina_volume_de_agua') }} m³
+      {%- if has_value('sensor.piscina_temperatura_da_agua') %} · {{ states('sensor.piscina_temperatura_da_agua') }} °C{% endif %}
+      {%- if has_value('datetime.piscina_data_da_medicao') %} · medido em {{ as_timestamp(states('datetime.piscina_data_da_medicao')) | timestamp_custom('%d/%m %H:%M') }}{% endif %}
+    icon: "{{ state_attr('sensor.piscina_qualidade_da_agua', 'icon') or 'mdi:pool' }}"
+    icon_color: >-
+      {% set s = states('sensor.piscina_qualidade_da_agua') %}
+      {{ 'green' if s == 'Água OK' else 'red' if s == 'Tratar Água' else 'blue' if s == 'Aguardando nova medição' else 'grey' }}
+    tap_action:
+      action: more-info
+
+  # --- Correções ---------------------------------------------------------------
+  - type: custom:mushroom-template-card
+    entity: number.piscina_alcalinidade_total
+    primary: >-
+      Alcalinidade: {{ states('number.piscina_alcalinidade_total') if has_value('number.piscina_alcalinidade_total') else '—' }} ppm
+    secondary: "{{ state_attr('sensor.piscina_qualidade_da_agua', 'correcao_alcalinidade') }}"
+    icon: mdi:test-tube
+    icon_color: >-
+      {% set s = state_attr('sensor.piscina_qualidade_da_agua', 'situacao_alcalinidade') %}
+      {{ 'green' if s == 'ok' else 'red' if s in ['low', 'high', 'blocked'] else 'blue' if s == 'pending' else 'grey' }}
+    tap_action:
+      action: more-info
+  - type: custom:mushroom-template-card
+    entity: number.piscina_ph
+    primary: >-
+      pH: {{ states('number.piscina_ph') if has_value('number.piscina_ph') else '—' }}
+    secondary: "{{ state_attr('sensor.piscina_qualidade_da_agua', 'correcao_ph') }}"
+    icon: mdi:ph
+    icon_color: >-
+      {% set s = state_attr('sensor.piscina_qualidade_da_agua', 'situacao_ph') %}
+      {{ 'green' if s == 'ok' else 'red' if s in ['low', 'high', 'blocked'] else 'blue' if s == 'pending' else 'grey' }}
+    tap_action:
+      action: more-info
+  - type: custom:mushroom-template-card
+    entity: number.piscina_cloro_livre
+    primary: >-
+      Cloro livre: {{ states('number.piscina_cloro_livre') if has_value('number.piscina_cloro_livre') else '—' }} ppm
+    secondary: "{{ state_attr('sensor.piscina_qualidade_da_agua', 'correcao_cloro') }}"
+    icon: mdi:water-plus
+    icon_color: >-
+      {% set s = state_attr('sensor.piscina_qualidade_da_agua', 'situacao_cloro') %}
+      {{ 'green' if s == 'ok' else 'red' if s in ['low', 'high', 'blocked'] else 'blue' if s == 'pending' else 'grey' }}
+    tap_action:
+      action: more-info
+
+  - type: custom:mushroom-template-card
+    entity: sensor.piscina_algicida
+    primary: "{{ state_attr('sensor.piscina_algicida', 'produto') }}"
+    secondary: "{{ states('sensor.piscina_algicida') }}"
+    icon: mdi:bacteria-outline
+    icon_color: >-
+      {% set s = state_attr('sensor.piscina_algicida', 'situacao') %}
+      {{ 'green' if s == 'ok' else 'orange' if s == 'due' else 'blue' if s == 'wait' else 'red' }}
+    tap_action:
+      action: more-info
+  - type: custom:mushroom-template-card
+    entity: sensor.piscina_clarificante
+    primary: "{{ state_attr('sensor.piscina_clarificante', 'produto') }}"
+    secondary: "{{ states('sensor.piscina_clarificante') }}"
+    icon: mdi:water-opacity
+    icon_color: >-
+      {% set s = state_attr('sensor.piscina_clarificante', 'situacao') %}
+      {{ 'green' if s == 'ok' else 'orange' if s == 'due' else 'blue' if s == 'wait' else 'red' }}
+    tap_action:
+      action: more-info
+  - type: custom:mushroom-template-card
+    entity: sensor.piscina_removedor_de_metais
+    primary: "{{ state_attr('sensor.piscina_removedor_de_metais', 'produto') }}"
+    secondary: "{{ states('sensor.piscina_removedor_de_metais') }}"
+    icon: mdi:flask-round-bottom-outline
+    icon_color: >-
+      {% set s = state_attr('sensor.piscina_removedor_de_metais', 'situacao') %}
+      {% set m = state_attr('sensor.piscina_removedor_de_metais', 'modo') %}
+      {{ 'orange' if s == 'due' else 'red' if s == 'blocked' else 'blue' if m == 'em ação' else 'green' if m == 'tratamento' else 'grey' }}
+    tap_action:
+      action: more-info
