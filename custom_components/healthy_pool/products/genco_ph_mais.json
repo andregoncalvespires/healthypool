@@ -1,0 +1,53 @@
+{
+  "id": "genco_ph_mais",
+  "brand": "Genco",
+  "name": "pH Mais",
+  "role": "ph_up",
+  "unit": "g",
+  "remeasure_hours": 1,
+  "dosing": {
+    "table_target_ph": 7.5,
+    "table_alkalinity": [
+      80,
+      120
+    ],
+    "table": [
+      [
+        6.4,
+        46,
+        74
+      ],
+      [
+        6.6,
+        38,
+        61
+      ],
+      [
+        6.8,
+        30,
+        48
+      ],
+      [
+        7.0,
+        21,
+        34
+      ],
+      [
+        7.2,
+        13,
+        21
+      ]
+    ],
+    "chemistry": "sodium_carbonate"
+  },
+  "instructions": [
+    "Use máscara, luvas e óculos de proteção.",
+    "Adicione direto da embalagem ou dissolva num balde plástico com água da piscina e distribua uniformemente sobre a superfície.",
+    "Mantenha a filtração ligada por 30 a 60 min para homogeneizar.",
+    "Teste o pH 1 h depois da aplicação para confirmar."
+  ],
+  "source": "Tabela do rótulo Genco pH Mais (barrilha): g/m³ para chegar a pH 7,5 com alcalinidade de 80 ou 120 ppm.",
+  "rules": {
+    "release_minutes": 30
+  }
+}

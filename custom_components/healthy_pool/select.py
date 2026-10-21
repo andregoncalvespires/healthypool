@@ -10,7 +10,6 @@ from .const import DOMAIN
 from .entity import PoolEntity
 from .maintenance import ASPECTS
 from .pool import PoolManager
-from .treatment import PRODUCTS
 
 
 async def async_setup_entry(
@@ -40,17 +39,22 @@ class PoolAspectSelect(PoolEntity, SelectEntity):
 class PoolAppliedProductSelect(PoolEntity, SelectEntity):
     """Produto que está sendo registrado (já vem com o da etapa sugerida)."""
 
-    _attr_options = [p.name for p in PRODUCTS.values()]
     _attr_icon = "mdi:flask-outline"
 
     def __init__(self, manager: PoolManager) -> None:
         super().__init__(manager, "applied_product", "Produto aplicado")
 
     @property
+    def options(self) -> list[str]:
+        P = self.manager.products
+        return [P[role].name for role in P.roles()]
+
+    @property
     def current_option(self) -> str | None:
         key = self.manager.effective_product
-        return PRODUCTS[key].name if key else None
+        return self.manager.products[key].name if key else None
 
     async def async_select_option(self, option: str) -> None:
-        key = next((k for k, p in PRODUCTS.items() if p.name == option), None)
+        P = self.manager.products
+        key = next((role for role in P.roles() if P[role].name == option), None)
         self.manager.select_product(key)

@@ -20,6 +20,8 @@ def _load(name):
 volume = _load("volume")
 dosing = _load("dosing")
 maintenance = _load("maintenance")
+catalog = _load("catalog")
+PRODUCTS = catalog.default_products()
 
 GEOM = volume.PoolGeometry(
     length_cm=700,
@@ -55,7 +57,7 @@ def test_alkalinity_low_uses_label_dose():
     # 33 m3, 60 ppm -> alvo 100: 40 ppm * 1,7 g * 33 = 2244 g
     res = dosing.analyze(33, 60, 7.5, 3.0)
     assert res.alkalinity.status == dosing.STATUS_LOW
-    assert res.alkalinity.product == dosing.PRODUCT_ALK_UP
+    assert res.alkalinity.product == PRODUCTS.alk_up.name
     assert abs(res.alkalinity.amount - 2240) <= 10
     assert res.ph.status == dosing.STATUS_OK  # pH está ok
     assert res.overall == dosing.OVERALL_TREAT
@@ -65,7 +67,7 @@ def test_alkalinity_high_splits_applications():
     # 170 ppm -> 70 ppm * 1 ml * 33 = 2310 ml, máx 660 ml por aplicação -> 4 aplicações
     res = dosing.analyze(33, 170, 7.5, 3.0)
     assert res.alkalinity.status == dosing.STATUS_HIGH
-    assert res.alkalinity.product == dosing.PRODUCT_PH_DOWN
+    assert res.alkalinity.product == PRODUCTS.acid.name
     assert res.alkalinity.applications == 4
     assert abs(res.alkalinity.amount - 2310) <= 10
 
@@ -95,14 +97,14 @@ def test_ph_low_grows_with_alkalinity_and_deficit():
 def test_ph_low_recommendation():
     res = dosing.analyze(33, 100, 6.8, 3.0)
     assert res.ph.status == dosing.STATUS_LOW
-    assert res.ph.product == dosing.PRODUCT_PH_UP
+    assert res.ph.product == PRODUCTS.ph_up.name
     assert res.ph.amount > 0
 
 
 def test_ph_high_label_doses():
     mild = dosing.analyze(33, 100, 7.9, 3.0)
     strong = dosing.analyze(33, 100, 8.2, 3.0)
-    assert mild.ph.product == dosing.PRODUCT_PH_DOWN
+    assert mild.ph.product == PRODUCTS.acid.name
     assert abs(mild.ph.amount - 330) <= 10  # 10 ml/m³
     assert abs(strong.ph.amount - 660) <= 10  # 20 ml/m³
 
@@ -132,13 +134,13 @@ def test_treatment_pending():
     assert res.alkalinity.status == dosing.STATUS_PENDING
     assert res.alkalinity.amount == 0
     assert res.overall == dosing.OVERALL_PENDING
-    assert res.amount_for(dosing.PRODUCT_ALK_UP) == 0
+    assert res.amount_for(catalog.ROLE_ALK_UP) == 0
 
 
 def test_amount_for_sums_products():
     res = dosing.analyze(33, 170, 7.5, 0.5)
-    assert res.amount_for(dosing.PRODUCT_PH_DOWN) > 0
-    assert res.amount_for(dosing.PRODUCT_CHLORINE) > 0
+    assert res.amount_for(catalog.ROLE_ACID) > 0
+    assert res.amount_for(catalog.ROLE_CHLORINE) > 0
 
 
 # ---------------------------------------------------------------- manutenção
@@ -244,7 +246,7 @@ def test_ph_up_extrapolates_below_table_and_never_negative():
 
 def test_ph_up_recommendation_uses_table_not_chemistry():
     res = dosing.analyze(33, 80, 6.4, 3.0)
-    assert res.ph.product == dosing.PRODUCT_PH_UP
+    assert res.ph.product == PRODUCTS.ph_up.name
     assert abs(res.ph.amount - 46 * 33) <= 10  # 1518 g, não os ~4000 g do modelo químico
 
 
@@ -255,9 +257,9 @@ def test_ph_up_target_other_than_7_5_scales_dose():
 
 
 def test_remeasure_hours_follow_the_labels():
-    assert dosing.REMEASURE_HOURS[dosing.PRODUCT_PH_UP] == 1
-    assert dosing.REMEASURE_HOURS[dosing.PRODUCT_PH_DOWN] == 24
-    assert dosing.REMEASURE_HOURS[dosing.PRODUCT_ALK_UP] == 24
+    assert PRODUCTS.ph_up.remeasure_hours == 1
+    assert PRODUCTS.acid.remeasure_hours == 24
+    assert PRODUCTS.alk_up.remeasure_hours == 24
 
 
 def test_multi_application_acid_is_one_per_day():
@@ -434,3 +436,47 @@ def test_other_pool_shapes():
     # retangular simples (sem área rasa nem escada) com profundidade uniforme
     simple = PoolGeometry(**{**base, "shallow_depth_cm": 140})
     assert abs(water_volume_m3(simple, 10) - 15 * 1.3) < 0.01
+
+
+def test_catalog_loader_validates_and_overrides(tmp_path):
+    import json
+
+    good = {
+        "id": "acme_up", "brand": "Acme", "name": "Sobe pH", "role": "ph_up", "unit": "g",
+        "dosing": {"table_target_ph": 7.4, "table_alkalinity": [80, 120], "table": [[6.8, 20, 30]]},
+    }
+    (tmp_path / "a.json").write_text(json.dumps(good), encoding="utf-8")
+    (tmp_path / "b.json").write_text(json.dumps({**good, "id": "b", "role": "inexistente"}), encoding="utf-8")
+    (tmp_path / "c.json").write_text(json.dumps({**good, "id": "c", "unit": "kg"}), encoding="utf-8")
+    (tmp_path / "d.json").write_text(json.dumps({**good, "id": "d", "dosing": {}}), encoding="utf-8")
+    (tmp_path / "e.json").write_text("nao e json", encoding="utf-8")
+    loaded = catalog.load_products([catalog.BUILTIN_DIR, tmp_path])
+    assert "acme_up" in loaded and len(loaded) == 8
+    assert loaded["genco_ph_certo"].label == "Genco pH Certo"
+    # escolha com id que sumiu volta para o padrão
+    chosen = catalog.ProductSet.from_choices(loaded, {"ph_up": "acme_up", "alk_up": "nao_existe"})
+    assert chosen.ph_up.id == "acme_up" and chosen.alk_up.id == "genco_ph_certo"
+
+
+def test_other_brand_ph_up_table_and_rates_drive_the_dose():
+    prods = catalog.default_products()
+    other = catalog.parse_product({
+        "id": "acme_up", "brand": "Acme", "name": "Sobe pH", "role": "ph_up", "unit": "g",
+        "dosing": {"table_target_ph": 7.4, "table_alkalinity": [80, 120],
+                   "table": [[6.8, 20, 30], [7.0, 10, 15]]},
+    })
+    custom = catalog.ProductSet.from_choices({**catalog.builtin_catalog(), "acme_up": other}, {"ph_up": "acme_up"})
+    assert custom.ph_up.name == "Sobe pH" and prods.ph_up.name == "pH Mais"
+    # alcalinidade 80, pH 6,8: a tabela da outra marca dá 20 g/m³ (sem modelo químico, meta = tabela)
+    assert abs(dosing.label_ph_up_g_per_m3(80, 6.8, other) - 20) < 1e-9
+    res = dosing.analyze(30, 80, 6.8, 3.0, targets=dosing.Targets(ph_target=7.4), products=custom)
+    assert res.ph.product == "Sobe pH" and res.ph.role == "ph_up"
+    assert abs(res.ph.amount - 600) <= 10
+
+
+def test_release_text_is_built_from_the_sheets():
+    text = maintenance._release_text(catalog.default_products())
+    assert text == (
+        "Liberação da piscina: 30 min após pH Mais, pH Menos, algicida e clarificante; "
+        "1 h após o removedor de metais; com cloro, só com o residual abaixo de 10 ppm."
+    )

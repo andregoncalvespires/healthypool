@@ -1,0 +1,25 @@
+{
+  "id": "genco_genquest",
+  "brand": "Genco",
+  "name": "Removedor de metais (Genquest)",
+  "short_name": "Removedor de metais",
+  "role": "metals_remover",
+  "unit": "mL",
+  "remeasure_hours": 0,
+  "dosing": {
+    "ml_per_m3_per_ppm": 15,
+    "removal_ml_per_m3": 50,
+    "repeat_days": 7,
+    "window_days": 7,
+    "bottle_ml": 1000
+  },
+  "rules": {
+    "ph_window": [
+      7.4,
+      7.6
+    ],
+    "max_chlorine": 1.0,
+    "release_minutes": 60
+  },
+  "source": "Rótulo Genco Genquest: 15 mL/m³ por ppm de metal ou 50 mL/m³ para eliminar manchas e coloração; cloro até 1 ppm e sem choque por 7 dias."
+}

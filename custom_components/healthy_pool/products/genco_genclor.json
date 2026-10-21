@@ -1,0 +1,22 @@
+{
+  "id": "genco_genclor",
+  "brand": "Genco",
+  "name": "Cloro granulado",
+  "role": "chlorine",
+  "unit": "g",
+  "remeasure_hours": 24,
+  "message_name": "cloro granulado (dicloro)",
+  "dosing": {
+    "available_chlorine": 0.56
+  },
+  "instructions": [
+    "Use máscara, luvas e óculos de proteção.",
+    "Espalhe direto sobre a água. Em piscinas de fibra, vinil ou pintadas, dissolva a dose antes em um recipiente plástico com água da piscina e use só a solução sobrenadante; não use grânulos que não dissolveram.",
+    "Não aplique no mesmo horário de algicida: deixe 12 h entre eles.",
+    "Analise o cloro livre antes da próxima aplicação (faixa de 2 a 4 ppm) e só use a piscina com o residual abaixo de 10 ppm."
+  ],
+  "source": "Dicloro estabilizado com 56 % de cloro disponível (Genclor): 1 ppm de cloro livre = 1 g/m³ de cloro disponível.",
+  "rules": {
+    "release_max_chlorine": 10
+  }
+}

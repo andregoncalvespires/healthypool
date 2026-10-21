@@ -44,13 +44,18 @@ from .const import (
     DEFAULTS,
     DOMAIN,
     STORAGE_VERSION,
+    USER_PRODUCTS_DIRNAME,
+)
+from .catalog import (
+    BUILTIN_DIR,
+    CONF_PRODUCT_PREFIX,
+    ROLE_ORDER,
+    ROLE_PH_UP,
+    Product,
+    ProductSet,
+    load_products,
 )
 from .dosing import (
-    PRODUCT_ALK_UP,
-    PRODUCT_CHLORINE,
-    PRODUCT_PH_DOWN,
-    PRODUCT_PH_UP,
-    REMEASURE_HOURS,
     STATUS_LOW,
     STATUS_OK,
     Analysis,
@@ -65,8 +70,6 @@ from .maintenance import (
     ASPECT_CLEAR,
     ASPECT_CLOUDY,
     ASPECTS,
-    CHLORINE_ALGAECIDE_GAP_HOURS,
-    ALGAECIDE_PH_MIN,
     ITEM_DUE,
     ITEM_WAIT,
     KEY_ALGAECIDE,
@@ -75,24 +78,25 @@ from .maintenance import (
     KEY_METALS,
     LEGACY_ASPECTS,
     METAL_ASPECTS,
-    METALS_MAX_CHLORINE,
     MaintenanceItem,
     build_instructions,
     evaluate_algaecide,
     evaluate_clarifier,
     evaluate_metals,
+    chlorine_gap_hours,
     fmt_dt,
+    metals_max_chlorine,
     metals_window_end,
+    ph_window,
 )
 from .treatment import (
     HISTORY_LIMIT,
+    LEGACY_KEYS,
     PARAM_ALK,
     PARAM_ASPECT,
     PARAM_CL,
     PARAM_PH,
     PARAMS,
-    PRODUCT_NAMES,
-    PRODUCTS,
     evaluate_cycle,
     infer_param,
     summarize_results,
@@ -100,15 +104,6 @@ from .treatment import (
 from .volume import PoolGeometry, volume_breakdown
 
 _UNSET: Any = object()
-
-# produto recomendado -> chave do registro de última aplicação
-_PRODUCT_KEYS = {
-    PRODUCT_ALK_UP: "ph_certo",
-    PRODUCT_PH_UP: "ph_mais",
-    PRODUCT_PH_DOWN: "ph_menos",
-    PRODUCT_CHLORINE: KEY_CHLORINE,
-}
-
 
 class PoolManager:
     """Guarda as medições da piscina e calcula as recomendações."""
@@ -132,6 +127,8 @@ class PoolManager:
         self.freeboard_cm: float = float(DEFAULTS[CONF_FREEBOARD])
         self.last_applied: dict[str, datetime] = {}
         self.temperature: float | None = None
+        self.catalog: dict[str, Product] = {}
+        self._products: ProductSet | None = None
         self._cache: dict[str, Any] = {}
         self._unsub_temp = None
         self._unsub_timer = None
@@ -145,6 +142,39 @@ class PoolManager:
     @property
     def cfg(self) -> dict[str, Any]:
         return {**DEFAULTS, **self.entry.data, **self.entry.options}
+
+    @property
+    def products(self) -> ProductSet:
+        """Produto escolhido para cada função (carregado em async_load)."""
+        if self._products is None:
+            self._products = ProductSet.from_choices(self.catalog, self._choices())
+        return self._products
+
+    def _choices(self) -> dict[str, str | None]:
+        return {role: self.cfg.get(f"{CONF_PRODUCT_PREFIX}{role}") for role in ROLE_ORDER}
+
+    @property
+    def user_products_dir(self) -> str:
+        return self.hass.config.path(USER_PRODUCTS_DIRNAME)
+
+    def product_for(self, key: str) -> Product:
+        return self.products[key]
+
+    def resolve_product(self, value: str | None) -> str | None:
+        """Aceita a função (alk_up), a chave antiga (ph_certo), o nome ou "Marca Nome" do produto."""
+        if not value:
+            return None
+        value = value.strip()
+        if value in ROLE_ORDER:
+            return value
+        if value in LEGACY_KEYS:
+            return LEGACY_KEYS[value]
+        wanted = value.casefold()
+        for role in ROLE_ORDER:
+            product = self.products[role]
+            if wanted in (product.name.casefold(), product.label.casefold(), product.id.casefold()):
+                return role
+        return None
 
     @property
     def geometry(self) -> PoolGeometry:
@@ -211,12 +241,18 @@ class PoolManager:
     def treatment_pending(self) -> bool:
         return bool(self.pending_params)
 
+    def _wait_hours(self, step: dict[str, Any]) -> float:
+        if step.get("wait_hours") is not None:
+            return float(step["wait_hours"])
+        product = self.products.get(step["key"])
+        return float(product.remeasure_hours) if product else 0.0
+
     @property
     def remeasure_at(self) -> datetime | None:
         """Quando medir de novo: o maior prazo dos rótulos entre as etapas que aguardam medição."""
         pending = self.pending_params
         times = [
-            dt_util.parse_datetime(s["at"]) + timedelta(hours=PRODUCTS[s["key"]].wait_hours)
+            dt_util.parse_datetime(s["at"]) + timedelta(hours=self._wait_hours(s))
             for s in self.cycle_steps
             if not s.get("skipped") and s.get("param") in pending
         ]
@@ -233,9 +269,15 @@ class PoolManager:
                 self.targets,
                 self.temperature,
                 self.pending_params,
+                self.products,
             )
             if self.metals_cloro_limited:
-                cap_chlorine(analysis, self.chlorine, METALS_MAX_CHLORINE, "Removedor de metais")
+                cap_chlorine(
+                    analysis,
+                    self.chlorine,
+                    metals_max_chlorine(self.products.metals),
+                    self.products.metals.item_name,
+                )
             self._require_ph_window(analysis)
             self._apply_algaecide_gap(analysis)
             self._cache["analysis"] = analysis
@@ -245,7 +287,8 @@ class PoolManager:
     def metals_cloro_limited(self) -> bool:
         """Cloro limitado a 1 ppm (e sem choque): aspecto de metais ou 7 dias após o Genquest."""
         return self.aspect in METAL_ASPECTS or (
-            metals_window_end(self.last_applied.get(KEY_METALS), dt_util.now()) is not None
+            metals_window_end(self.last_applied.get(KEY_METALS), dt_util.now(), self.products.metals)
+            is not None
         )
 
     def _eval_algaecide(self) -> MaintenanceItem:
@@ -260,6 +303,9 @@ class PoolManager:
             dt_util.now(),
             float(self.cfg[CONF_ALGAECIDE_DAYS]),
             chlorine_limited=self.metals_cloro_limited,
+            product=self.products.algaecide,
+            acid=self.products.acid,
+            metals=self.products.metals,
         )
 
     def _eval_metals(self) -> MaintenanceItem:
@@ -275,6 +321,8 @@ class PoolManager:
             dt_util.now(),
             t.alk_min,
             t.alk_max,
+            product=self.products.metals,
+            acid=self.products.acid,
         )
 
     def _require_ph_window(self, analysis: Analysis) -> None:
@@ -290,7 +338,7 @@ class PoolManager:
             rec.status != STATUS_OK
             or self.ph is None
             or self.alkalinity is None
-            or self.ph >= ALGAECIDE_PH_MIN
+            or self.ph >= ph_window(self.products.algaecide)[0]
             or not t.alk_min <= self.alkalinity <= t.alk_max
         ):
             return
@@ -298,7 +346,9 @@ class PoolManager:
         if not blocked:
             return
         total = round_amount(
-            ph_up_g_per_m3(self.alkalinity, self.ph, t.ph_target, self.temperature or 25.0)
+            ph_up_g_per_m3(
+                self.alkalinity, self.ph, t.ph_target, self.temperature or 25.0, self.products.ph_up
+            )
             * t.ph_up_factor
             * self.volume_m3
         )
@@ -306,12 +356,18 @@ class PoolManager:
             return
         names = " e ".join(i.name.lower() for i in blocked)
         rec.status = STATUS_LOW
-        rec.product = PRODUCT_PH_UP
+        up = self.products.ph_up
+        low, high = ph_window(self.products.algaecide)
+        rec.product = up.name
+        rec.role = ROLE_PH_UP
         rec.amount = total
-        rec.unit = "g"
+        rec.unit = up.unit
         rec.applications = 1
-        rec.message = f"Adicionar {int(round(total))} g de {PRODUCT_PH_UP}"
-        rec.note = f"Para chegar a 7,4 a 7,6, faixa exigida pelo {names}."
+        rec.message = f"Adicionar {int(round(total))} {up.unit} de {up.text_name}"
+        rec.note = (
+            f"Para chegar a {f'{low:g}'.replace('.', ',')} a {f'{high:g}'.replace('.', ',')}, "
+            f"faixa exigida pelo {names}."
+        )
         analysis.overall = overall_status(r.status for r in analysis.recommendations)
 
     def _apply_algaecide_gap(self, analysis: Analysis) -> None:
@@ -320,14 +376,15 @@ class PoolManager:
         rec = analysis.chlorine
         if last is None or rec.status != STATUS_LOW:
             return
-        gap_end = last + timedelta(hours=CHLORINE_ALGAECIDE_GAP_HOURS)
+        gap = chlorine_gap_hours(self.products.algaecide)
+        gap_end = last + timedelta(hours=gap)
         now = dt_util.now()
         if now < gap_end:
             rec.message = (
                 f"Aguardar até {fmt_dt(gap_end, now)} para adicionar "
-                f"{int(round(rec.amount))} g de cloro (12 h após o algicida)"
+                f"{int(round(rec.amount))} {rec.unit} de cloro ({gap:g} h após o algicida)"
             )
-            rec.note = "O rótulo do algicida pede 12 h entre ele e o cloro."
+            rec.note = f"O rótulo do algicida pede {gap:g} h entre ele e o cloro."
 
     @property
     def algaecide(self) -> MaintenanceItem:
@@ -338,7 +395,7 @@ class PoolManager:
                 item.status = ITEM_WAIT
                 item.message = (
                     f"Aplicar {int(item.amount_ml)} mL de {item.name.lower()} "
-                    "12 h depois de adicionar o cloro"
+                    f"{chlorine_gap_hours(self.products.algaecide):g} h depois de adicionar o cloro"
                 )
             self._cache["algaecide"] = item
         return self._cache["algaecide"]
@@ -365,12 +422,21 @@ class PoolManager:
     def instructions(self) -> tuple[str, int]:
         if "instructions" not in self._cache:
             self._cache["instructions"] = build_instructions(
-                self.analysis, self.algaecide, self.clarifier, self.metals, dt_util.now()
+                self.analysis,
+                self.algaecide,
+                self.clarifier,
+                self.metals,
+                dt_util.now(),
+                self.products,
             )
         return self._cache["instructions"]
 
     # --------------------------------------------------------------- persistência
     async def async_load(self) -> None:
+        self.catalog = await self.hass.async_add_executor_job(
+            load_products, [BUILTIN_DIR, self.user_products_dir]
+        )
+        self._products = None
         data = await self._store.async_load() or {}
         self.alkalinity = data.get("alkalinity")
         self.ph = data.get("ph")
@@ -380,6 +446,7 @@ class PoolManager:
         self.last_treatment_summary = list(data.get("last_treatment_summary") or [])
         self.cycle = data.get("cycle") or None
         self.history = list(data.get("history") or [])[:HISTORY_LIMIT]
+        self._migrate_legacy_keys()
         self.metals_ppm = float(data.get("metals_ppm") or 0.0)
         # Altura livre agora é uma entidade; instalações antigas partem do valor da configuração.
         self.freeboard_cm = float(
@@ -388,10 +455,18 @@ class PoolManager:
         aspect = LEGACY_ASPECTS.get(data.get("aspect"), data.get("aspect"))
         self.aspect = aspect if aspect in ASPECTS else ASPECT_CLEAR
         self.last_applied = {
-            key: parsed
+            LEGACY_KEYS.get(key, key): parsed
             for key, value in (data.get("last_applied") or {}).items()
             if (parsed := _parse(value)) is not None
         }
+
+    def _migrate_legacy_keys(self) -> None:
+        """Versões anteriores guardavam o nome do produto Genco como chave; agora é a função."""
+        steps = list(self.cycle["steps"]) if self.cycle else []
+        for entry in self.history:
+            steps.extend(entry.get("etapas", []))
+        for step in steps:
+            step["key"] = LEGACY_KEYS.get(step.get("key"), step.get("key"))
 
     @callback
     def _save(self) -> None:
@@ -544,13 +619,13 @@ class PoolManager:
             skipped = {s["key"] for s in self.cycle["steps"] if s.get("skipped")}
         out: list[dict[str, Any]] = []
         for param, rec in zip(PARAMS, self.analysis.recommendations):
-            key = _PRODUCT_KEYS.get(rec.product or "")
+            key = rec.role
             if not (rec.actionable and key and rec.amount > 0) or key in skipped:
                 continue
             cand = {
                 "key": key,
-                "name": PRODUCTS[key].name,
-                "unit": PRODUCTS[key].unit,
+                "name": self.products[key].name,
+                "unit": self.products[key].unit,
                 "param": param,
                 "amount": round_amount(rec.per_application),
                 "message": rec.message,
@@ -559,8 +634,9 @@ class PoolManager:
             }
             if key == KEY_CHLORINE:
                 last = self.last_applied.get(KEY_ALGAECIDE)
-                if last and now < last + timedelta(hours=CHLORINE_ALGAECIDE_GAP_HOURS):
-                    cand["wait_until"] = last + timedelta(hours=CHLORINE_ALGAECIDE_GAP_HOURS)
+                gap = timedelta(hours=chlorine_gap_hours(self.products.algaecide))
+                if last and now < last + gap:
+                    cand["wait_until"] = last + gap
             out.append(cand)
         # Produtos de manutenção dependem da química já corrigida: com alcalinidade ou pH
         # em correção, esperam a nova medição (prazo do rótulo) antes de entrar.
@@ -571,7 +647,7 @@ class PoolManager:
                 out.append(
                     {
                         "key": item.key,
-                        "name": PRODUCTS[item.key].name,
+                        "name": self.products[item.key].name,
                         "unit": "mL",
                         "param": None,
                         "amount": round_amount(item.amount_ml),
@@ -584,7 +660,7 @@ class PoolManager:
                 out.append(
                     {
                         "key": item.key,
-                        "name": PRODUCTS[item.key].name,
+                        "name": self.products[item.key].name,
                         "unit": "mL",
                         "param": None,
                         "amount": round_amount(item.amount_ml),
@@ -734,7 +810,7 @@ class PoolManager:
                 "antes": cycle["before"],
                 "depois": cycle["after"],
                 "etapas": steps,
-                "resultados": evaluate_cycle(cycle, self.volume_m3, self._targets_by_param),
+                "resultados": evaluate_cycle(cycle, self.volume_m3, self._targets_by_param, self.products),
             },
         )
         del self.history[HISTORY_LIMIT:]
@@ -771,8 +847,8 @@ class PoolManager:
     @callback
     def register_step(self, key: str | None = None, amount: float | None = None) -> None:
         """Registra uma aplicação: produto e quantidade realmente colocados na água."""
-        key = key or self.effective_product
-        if key not in PRODUCTS:
+        key = self.resolve_product(key) if key else self.effective_product
+        if key not in ROLE_ORDER:
             raise ServiceValidationError("Escolha o produto aplicado.")
         if amount is None:
             amount = self.effective_amount if key == self.effective_product else 0.0
@@ -780,7 +856,7 @@ class PoolManager:
         if amount <= 0:
             raise ServiceValidationError("Informe a quantidade aplicada.")
 
-        info = PRODUCTS[key]
+        info = self.products[key]
         suggested = self.current_step if self.current_step and self.current_step["key"] == key else None
         param = infer_param(
             key, suggested["param"] if suggested else None, self.alkalinity, self.targets.alk_max
@@ -794,6 +870,7 @@ class PoolManager:
                 "name": info.name,
                 "amount": amount,
                 "unit": info.unit,
+                "wait_hours": info.remeasure_hours,
                 "planned_amount": suggested["amount"] if suggested else None,
                 "applications": suggested.get("applications", 1) if suggested else 1,
                 "param": param,
@@ -851,7 +928,7 @@ class PoolManager:
     def latest_results(self) -> tuple[list[dict[str, Any]], str | None]:
         """Resultado do ciclo atual (se já houve medição depois) ou do último concluído."""
         if self.cycle and self._real_steps(self.cycle):
-            results = evaluate_cycle(self.cycle, self.volume_m3, self._targets_by_param)
+            results = evaluate_cycle(self.cycle, self.volume_m3, self._targets_by_param, self.products)
             if results:
                 return results, self.cycle["started_at"]
         if self.history:
@@ -878,7 +955,7 @@ class PoolManager:
         if self.cycle and self._real_steps(self.cycle):
             current = entry(self.cycle, True)
             current["resultado"] = summarize_results(
-                evaluate_cycle(self.cycle, self.volume_m3, self._targets_by_param)
+                evaluate_cycle(self.cycle, self.volume_m3, self._targets_by_param, self.products)
             )
             out.append(current)
         out.extend(entry(h) for h in self.history)

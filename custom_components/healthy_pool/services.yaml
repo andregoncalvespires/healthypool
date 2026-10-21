@@ -50,17 +50,25 @@ registrar_etapa:
   fields:
     produto:
       name: Produto aplicado
-      description: Se vazio, usa o produto escolhido ou o da etapa atual.
+      description: Função ou nome do produto. Se vazio, usa o produto escolhido ou o da etapa atual.
       selector:
         select:
+          custom_value: true
           options:
-            - pH Certo
-            - pH Mais
-            - pH Menos
-            - Cloro granulado
-            - Algicida
-            - Clarificante
-            - Removedor de metais (Genquest)
+            - label: Subir alcalinidade
+              value: alk_up
+            - label: Baixar alcalinidade e pH
+              value: acid
+            - label: Subir pH
+              value: ph_up
+            - label: Cloro
+              value: chlorine
+            - label: Algicida
+              value: algaecide
+            - label: Clarificante
+              value: clarifier
+            - label: Removedor de metais
+              value: metals_remover
     quantidade:
       name: Quantidade aplicada
       description: Em g (pH Certo, pH Mais, cloro) ou mL (os demais). Se vazia, usa a dose sugerida.

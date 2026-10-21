@@ -41,6 +41,19 @@
           "algaecide_interval_days": "O rótulo Genco recomenda aplicação semanal (7 dias).",
           "clarifier_interval_days": "O rótulo Genco recomenda uso preventivo semanal (7 dias)."
         }
+      },
+      "products": {
+        "title": "Produtos",
+        "description": "Escolha o produto que você usa em cada função. As doses, esperas e instruções vêm da ficha do produto. Para incluir outra marca, veja products/README.md.",
+        "data": {
+          "product_alk_up": "Produto para subir a alcalinidade",
+          "product_acid": "Produto para baixar alcalinidade e pH",
+          "product_ph_up": "Produto para subir o pH",
+          "product_chlorine": "Produto de cloro",
+          "product_algaecide": "Algicida",
+          "product_clarifier": "Clarificante",
+          "product_metals_remover": "Removedor de metais"
+        }
       }
     },
     "error": {
@@ -88,6 +101,19 @@
           "ph_up_factor": "1,0 usa a dose calculada. Se o pH subir pouco, aumente; se passar do alvo, diminua.",
           "algaecide_interval_days": "O rótulo Genco recomenda aplicação semanal (7 dias).",
           "clarifier_interval_days": "O rótulo Genco recomenda uso preventivo semanal (7 dias)."
+        }
+      },
+      "products": {
+        "title": "Produtos",
+        "description": "Escolha o produto que você usa em cada função. As doses, esperas e instruções vêm da ficha do produto. Para incluir outra marca, veja products/README.md.",
+        "data": {
+          "product_alk_up": "Produto para subir a alcalinidade",
+          "product_acid": "Produto para baixar alcalinidade e pH",
+          "product_ph_up": "Produto para subir o pH",
+          "product_chlorine": "Produto de cloro",
+          "product_algaecide": "Algicida",
+          "product_clarifier": "Clarificante",
+          "product_metals_remover": "Removedor de metais"
         }
       }
     },

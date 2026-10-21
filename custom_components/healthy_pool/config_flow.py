@@ -9,6 +9,15 @@ from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
+from .catalog import (
+    BUILTIN_DIR,
+    CONF_PRODUCT_PREFIX,
+    DEFAULT_IDS,
+    ROLE_ORDER,
+    Product,
+    load_products,
+    products_for_role,
+)
 from .const import (
     CONF_ALGAECIDE_DAYS,
     CONF_ALK_MAX,
@@ -41,6 +50,7 @@ from .const import (
     DEFAULT_NAME,
     DEFAULTS,
     DOMAIN,
+    USER_PRODUCTS_DIRNAME,
 )
 
 
@@ -86,6 +96,29 @@ def _geometry_schema(values: dict[str, Any], with_name: bool) -> vol.Schema:
             ),
         }
     )
+    return vol.Schema(fields)
+
+
+async def _load_catalog(hass) -> dict[str, Product]:
+    return await hass.async_add_executor_job(
+        load_products, [BUILTIN_DIR, hass.config.path(USER_PRODUCTS_DIRNAME)]
+    )
+
+
+def _products_schema(catalog: dict[str, Product], values: dict[str, Any]) -> vol.Schema:
+    fields: dict[Any, Any] = {}
+    for role in ROLE_ORDER:
+        options = [
+            selector.SelectOptionDict(value=p.id, label=p.label)
+            for p in products_for_role(catalog, role)
+        ]
+        key = f"{CONF_PRODUCT_PREFIX}{role}"
+        current = values.get(key)
+        if current not in {o["value"] for o in options}:
+            current = DEFAULT_IDS[role]
+        fields[vol.Required(key, default=current)] = selector.SelectSelector(
+            selector.SelectSelectorConfig(options=options, mode=selector.SelectSelectorMode.DROPDOWN)
+        )
     return vol.Schema(fields)
 
 
@@ -159,11 +192,20 @@ class HealthyPoolConfigFlow(ConfigFlow, domain=DOMAIN):
             errors = _geometry_errors(user_input)
             if not errors:
                 self._data = _clean(user_input)
-                return await self.async_step_limits()
+                return await self.async_step_products()
         return self.async_show_form(
             step_id="user",
             data_schema=_geometry_schema(values, with_name=True),
             errors=errors,
+        )
+
+    async def async_step_products(self, user_input: dict[str, Any] | None = None):
+        catalog = await _load_catalog(self.hass)
+        if user_input is not None:
+            self._data = {**self._data, **user_input}
+            return await self.async_step_limits()
+        return self.async_show_form(
+            step_id="products", data_schema=_products_schema(catalog, dict(DEFAULTS))
         )
 
     async def async_step_limits(self, user_input: dict[str, Any] | None = None):
@@ -202,11 +244,20 @@ class HealthyPoolOptionsFlow(OptionsFlow):
             errors = _geometry_errors(user_input)
             if not errors:
                 self._geometry = _clean(user_input)
-                return await self.async_step_limits()
+                return await self.async_step_products()
         return self.async_show_form(
             step_id="init",
             data_schema=_geometry_schema(values, with_name=False),
             errors=errors,
+        )
+
+    async def async_step_products(self, user_input: dict[str, Any] | None = None):
+        catalog = await _load_catalog(self.hass)
+        if user_input is not None:
+            self._geometry = {**self._geometry, **user_input}
+            return await self.async_step_limits()
+        return self.async_show_form(
+            step_id="products", data_schema=_products_schema(catalog, self._current())
         )
 
     async def async_step_limits(self, user_input: dict[str, Any] | None = None):

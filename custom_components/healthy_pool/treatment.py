@@ -1,8 +1,17 @@
-"""Tratamento por etapas: catálogo de produtos, eficácia e histórico (sem dependências do HA)."""
+"""Tratamento por etapas: eficácia e histórico (sem dependências do HA)."""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+
+from .catalog import (
+    ROLE_ACID,
+    ROLE_ALK_UP,
+    ROLE_CHLORINE,
+    ROLE_PH_UP,
+    ProductSet,
+    default_products,
+)
 from typing import Any
 
 PARAM_ALK = "alkalinity"
@@ -24,38 +33,35 @@ VERDICT_OK = "dentro do esperado"
 VERDICT_LOW = "abaixo do esperado"
 VERDICT_HIGH = "acima do esperado"
 
-ALK_UP_G_PER_M3_PER_PPM = 1.7  # pH Certo (rótulo: 17 g/m³ sobem 10 ppm)
-ALK_DOWN_ML_PER_M3_PER_PPM = 1.0  # pH Menos (rótulo: 10 mL/m³ a cada 10 ppm)
-CHLORINE_AVAILABLE = 0.56  # dicloro 56 %
-
-
-@dataclass(frozen=True)
-class ProductInfo:
-    key: str
-    name: str
-    unit: str
-    param: str | None  # parâmetro que o produto corrige (None = depende ou não se aplica)
-    wait_hours: float  # espera do rótulo antes de medir de novo
-
-
-PRODUCTS: dict[str, ProductInfo] = {
-    "ph_certo": ProductInfo("ph_certo", "pH Certo", "g", PARAM_ALK, 24),
-    "ph_mais": ProductInfo("ph_mais", "pH Mais", "g", PARAM_PH, 1),
-    "ph_menos": ProductInfo("ph_menos", "pH Menos", "mL", None, 24),
-    "cloro": ProductInfo("cloro", "Cloro granulado", "g", PARAM_CL, 24),
-    "algicida": ProductInfo("algicida", "Algicida", "mL", None, 0),
-    "clarificante": ProductInfo("clarificante", "Clarificante", "mL", None, 0),
-    "removedor_metais": ProductInfo("removedor_metais", "Removedor de metais (Genquest)", "mL", None, 0),
+# Chaves antigas (antes do catálogo) -> função do produto
+LEGACY_KEYS = {
+    "ph_certo": "alk_up",
+    "ph_mais": "ph_up",
+    "ph_menos": "acid",
+    "cloro": "chlorine",
+    "algicida": "algaecide",
+    "clarificante": "clarifier",
+    "removedor_metais": "metals_remover",
 }
-PRODUCT_NAMES = {p.name: p.key for p in PRODUCTS.values()}
+
+# parâmetro que a função corrige (None: depende do caso ou não se aplica)
+ROLE_PARAMS: dict[str, str | None] = {
+    ROLE_ALK_UP: PARAM_ALK,
+    ROLE_PH_UP: PARAM_PH,
+    ROLE_CHLORINE: PARAM_CL,
+    ROLE_ACID: None,
+    "algaecide": None,
+    "clarifier": None,
+    "metals_remover": None,
+}
 
 
-def infer_param(key: str, suggested_param: str | None, alk: float | None, alk_max: float) -> str | None:
-    """Parâmetro que uma aplicação vai corrigir (o pH Menos serve para alcalinidade e para pH)."""
-    info = PRODUCTS[key]
-    if info.param:
-        return info.param
-    if key == "ph_menos":
+def infer_param(role: str, suggested_param: str | None, alk: float | None, alk_max: float) -> str | None:
+    """Parâmetro que uma aplicação vai corrigir (o ácido serve para alcalinidade e para pH)."""
+    param = ROLE_PARAMS.get(role)
+    if param:
+        return param
+    if role == ROLE_ACID:
         if suggested_param in (PARAM_ALK, PARAM_PH):
             return suggested_param
         return PARAM_ALK if alk is not None and alk > alk_max else PARAM_PH
@@ -63,19 +69,25 @@ def infer_param(key: str, suggested_param: str | None, alk: float | None, alk_ma
 
 
 def expected_change(
-    step: dict[str, Any], param: str, volume_m3: float, before: float | None, target: float
+    step: dict[str, Any],
+    param: str,
+    volume_m3: float,
+    before: float | None,
+    target: float,
+    products: ProductSet | None = None,
 ) -> float | None:
     """Variação esperada do parâmetro com a quantidade realmente aplicada, pelos rótulos."""
     amount = float(step.get("amount") or 0)
     if amount <= 0 or volume_m3 <= 0:
         return None
+    P = products or default_products()
     key = step["key"]
-    if key == "ph_certo":
-        return amount / volume_m3 / ALK_UP_G_PER_M3_PER_PPM
-    if key == "ph_menos" and param == PARAM_ALK:
-        return -amount / volume_m3 / ALK_DOWN_ML_PER_M3_PER_PPM
-    if key == "cloro":
-        return amount * CHLORINE_AVAILABLE / volume_m3
+    if key == ROLE_ALK_UP:
+        return amount / volume_m3 / float(P.alk_up.dosing["g_per_m3_per_ppm"])
+    if key == ROLE_ACID and param == PARAM_ALK:
+        return -amount / volume_m3 / float(P.acid.dosing["alkalinity_ml_per_m3_per_ppm"])
+    if key == ROLE_CHLORINE:
+        return amount * float(P.chlorine.dosing["available_chlorine"]) / volume_m3
     # pH: a dose sugerida levaria até a meta; proporcional ao que foi aplicado
     planned = step.get("planned_amount")
     if param == PARAM_PH and planned and before is not None:
@@ -84,7 +96,10 @@ def expected_change(
 
 
 def evaluate_cycle(
-    cycle: dict[str, Any], volume_m3: float, targets: dict[str, float]
+    cycle: dict[str, Any],
+    volume_m3: float,
+    targets: dict[str, float],
+    products: ProductSet | None = None,
 ) -> list[dict[str, Any]]:
     """Compara antes e depois de cada parâmetro tratado no ciclo."""
     results: list[dict[str, Any]] = []
@@ -99,7 +114,7 @@ def evaluate_cycle(
         b, a = before.get(param), after[param]
         expected: float | None = 0.0
         for s in mine:
-            delta = expected_change(s, param, volume_m3, b, targets.get(param, 0.0))
+            delta = expected_change(s, param, volume_m3, b, targets.get(param, 0.0), products)
             expected = None if (delta is None or expected is None) else expected + delta
         item: dict[str, Any] = {
             "parametro": PARAM_LABELS[param],
@@ -145,7 +160,7 @@ def _measured_early(steps: list[dict[str, Any]], after_at: str | None) -> bool:
         return False
     measured = datetime.fromisoformat(after_at)
     return any(
-        measured < datetime.fromisoformat(s["at"]) + timedelta(hours=PRODUCTS[s["key"]].wait_hours)
+        measured < datetime.fromisoformat(s["at"]) + timedelta(hours=float(s.get("wait_hours") or 0))
         for s in steps
     )
 

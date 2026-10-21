@@ -163,6 +163,10 @@ async def test_config_flow_creates_entry(hass: HomeAssistant):
         CONF_NAME: "Piscina"}
     result = await hass.config_entries.flow.async_configure(result["flow_id"], geometry)
     assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "products"
+    products = {k: v for k, v in DEFAULTS.items() if k.startswith("product_")}
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], products)
+    assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "limits"
 
     limits = {k: v for k, v in DEFAULTS.items() if k.startswith(("alk_", "ph_", "cl_"))}
@@ -170,6 +174,7 @@ async def test_config_flow_creates_entry(hass: HomeAssistant):
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["title"] == "Piscina"
     assert result["data"]["stair_steps"] == 3
+    assert result["data"]["product_alk_up"] == "genco_ph_certo"
 
 
 async def test_config_flow_rejects_bad_geometry(hass: HomeAssistant):
@@ -198,6 +203,9 @@ async def test_options_flow_updates_geometry(hass: HomeAssistant):
         "deep_depth_cm", "stair_steps", "stair_tread_cm", "stair_width_cm")}
     geometry["length_cm"] = 800
     result = await hass.config_entries.options.async_configure(result["flow_id"], geometry)
+    assert result["step_id"] == "products"
+    products = {k: v for k, v in DEFAULTS.items() if k.startswith("product_")}
+    result = await hass.config_entries.options.async_configure(result["flow_id"], products)
     assert result["step_id"] == "limits"
     limits = {k: v for k, v in DEFAULTS.items() if k.startswith(("alk_", "ph_", "cl_"))}
     limits.update(algaecide_interval_days=7, clarifier_interval_days=7)
@@ -741,3 +749,97 @@ async def test_next_action_attribute_for_notifications(hass: HomeAssistant):
     when = dt_util.parse_datetime(attrs["proxima_acao_em"])
     assert timedelta(hours=11) < when - dt_util.utcnow() <= timedelta(hours=12)
     assert "Cloro granulado" in attrs["proxima_acao_descricao"]
+
+
+OTHER_BRAND_ALK_UP = {
+    "id": "acme_alk_plus",
+    "brand": "Acme",
+    "name": "Alcalino Plus",
+    "role": "alk_up",
+    "unit": "g",
+    "remeasure_hours": 12,
+    "dosing": {"g_per_m3_per_ppm": 2.0},
+    "instructions": ["Dissolva em água antes de aplicar. Depois, corrija o pH com {ph_up}."],
+    "source": "Ficha de teste",
+}
+
+
+async def test_custom_product_changes_dose_names_and_instructions(hass: HomeAssistant, tmp_path):
+    import json
+
+    hass.config.config_dir = str(tmp_path)
+    folder = tmp_path / "healthy_pool_products"
+    folder.mkdir()
+    (folder / "acme_alk_plus.json").write_text(json.dumps(OTHER_BRAND_ALK_UP), encoding="utf-8")
+    (folder / "quebrada.json").write_text("{ não é json", encoding="utf-8")  # ignorada
+    (folder / "incompleta.json").write_text(json.dumps({"id": "x"}), encoding="utf-8")  # ignorada
+
+    entry = await _setup(hass, product_alk_up="acme_alk_plus")
+    await hass.services.async_call(
+        DOMAIN, "registrar_medicao", {"alcalinidade": 60, "ph": 7.5, "cloro": 3.0}, blocking=True
+    )
+    # 40 ppm x 2,0 g/m³/ppm x ~32,9 m³ (a ficha da Genco daria 1,7)
+    dose = float(hass.states.get("sensor.piscina_adicionar_ph_certo").state)
+    assert abs(dose - 40 * 2.0 * 32.9) <= 30
+    assert "Alcalino Plus" in hass.states.get("sensor.piscina_correcao_alcalinidade").state
+    assert hass.states.get("select.piscina_produto_aplicado").state == "Alcalino Plus"
+    text = hass.states.get("sensor.piscina_instrucoes_de_aplicacao").attributes["instrucoes"]
+    assert "Dissolva em água" in text and "corrija o pH com pH Mais" in text
+    assert hass.states.get("sensor.piscina_adicionar_ph_certo").attributes["marca"] == "Acme"
+
+    # a espera vem da ficha (12 h)
+    manager = hass.data[DOMAIN][entry.entry_id]
+    await hass.services.async_call("button", "press", {"entity_id": "button.piscina_registrar_etapa"}, blocking=True)
+    remeasure = dt_util.parse_datetime(hass.states.get("sensor.piscina_remedir_a_partir_de").state)
+    assert timedelta(hours=11) < remeasure - dt_util.utcnow() <= timedelta(hours=12)
+    assert manager.cycle["steps"][0]["name"] == "Alcalino Plus"
+
+
+async def test_unknown_product_choice_falls_back_to_default(hass: HomeAssistant):
+    entry = await _setup(hass, product_alk_up="nao_existe")
+    assert hass.data[DOMAIN][entry.entry_id].products.alk_up.id == "genco_ph_certo"
+
+
+async def test_register_step_accepts_role_name_or_legacy_key(hass: HomeAssistant):
+    from homeassistant.exceptions import ServiceValidationError
+
+    entry = await _setup(hass)
+    manager = hass.data[DOMAIN][entry.entry_id]
+    await _step(hass, "algaecide", 165)
+    await _step(hass, "Clarificante", 50)
+    await _step(hass, "Genco pH Certo", 100)
+    manager.register_step("ph_menos", 50)  # chave antiga
+    assert [s["key"] for s in manager.cycle["steps"]] == ["algaecide", "clarifier", "alk_up", "acid"]
+    with pytest.raises(ServiceValidationError):
+        await _step(hass, "Produto inexistente", 10)
+
+
+async def test_legacy_stored_keys_are_migrated(hass: HomeAssistant, hass_storage):
+    entry = MockConfigEntry(domain=DOMAIN, title="Piscina", data={**DEFAULTS, CONF_NAME: "Piscina"})
+    entry.add_to_hass(hass)
+    hass_storage[f"{DOMAIN}.{entry.entry_id}"] = {
+        "version": 1,
+        "minor_version": 1,
+        "key": f"{DOMAIN}.{entry.entry_id}",
+        "data": {
+            "last_applied": {"algicida": "2026-10-01T10:00:00+00:00", "ph_certo": "2026-10-01T10:00:00+00:00"},
+            "cycle": {
+                "started_at": "2026-10-01T10:00:00+00:00",
+                "before": {},
+                "after": {},
+                "after_at": {},
+                "steps": [{"at": "2026-10-01T10:00:00+00:00", "key": "ph_certo", "name": "pH Certo",
+                           "amount": 100, "unit": "g", "param": "alkalinity", "skipped": False}],
+            },
+            "history": [{"inicio": "2026-09-01T10:00:00+00:00", "fim": "2026-09-02T10:00:00+00:00",
+                         "antes": {}, "depois": {}, "resultados": [],
+                         "etapas": [{"at": "2026-09-01T10:00:00+00:00", "key": "cloro", "name": "Cloro granulado",
+                                     "amount": 50, "unit": "g", "param": "chlorine", "skipped": False}]}],
+        },
+    }
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    manager = hass.data[DOMAIN][entry.entry_id]
+    assert set(manager.last_applied) == {"algaecide", "alk_up"}
+    assert manager.cycle["steps"][0]["key"] == "alk_up"
+    assert manager.history[0]["etapas"][0]["key"] == "chlorine"

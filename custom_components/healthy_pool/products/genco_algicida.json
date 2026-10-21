@@ -1,0 +1,29 @@
+{
+  "id": "genco_algicida",
+  "brand": "Genco",
+  "name": "Algicida",
+  "role": "algaecide",
+  "unit": "mL",
+  "remeasure_hours": 0,
+  "dosing": {
+    "maintenance_ml_per_m3": 5,
+    "shock_ml_per_m3": 7,
+    "shock_interval_days": 7,
+    "maintenance_name": "Algicida de manutenção",
+    "shock_name": "Algicida de choque"
+  },
+  "rules": {
+    "ph_window": [
+      7.4,
+      7.6
+    ],
+    "chlorine_range": [
+      2,
+      4
+    ],
+    "min_hours_between_chlorine": 12,
+    "shock_contains_copper": true,
+    "release_minutes": 30
+  },
+  "source": "Rótulos Genco do algicida de manutenção (5 mL/m³ por semana) e de choque (7 mL/m³, à base de íons de cobre quelados)."
+}

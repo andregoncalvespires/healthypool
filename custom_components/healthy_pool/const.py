@@ -6,6 +6,9 @@ DEFAULT_NAME = "Piscina"
 
 STORAGE_VERSION = 1
 
+# Pasta (dentro da configuração do HA) para fichas de produtos próprias; veja products/README.md
+USER_PRODUCTS_DIRNAME = "healthy_pool_products"
+
 # --- Geometria (todas as medidas em cm) ---
 CONF_NAME = "name"
 CONF_LENGTH = "length_cm"
@@ -54,9 +57,12 @@ GEOMETRY_KEYS = (
     CONF_FREEBOARD,
 )
 
+from .catalog import CONF_PRODUCT_PREFIX, DEFAULT_IDS  # noqa: E402
+
 DEFAULTS: dict[str, float | int | str] = {
     CONF_SHAPE: SHAPE_RECT,
     CONF_MANUAL_VOLUME: 0,
+    **{f"{CONF_PRODUCT_PREFIX}{role}": pid for role, pid in DEFAULT_IDS.items()},
     # Piscina do André: 395 x 700 cm, área rasa de 200 cm, escada de 3 degraus de 37 cm
     CONF_LENGTH: 700,
     CONF_WIDTH: 395,

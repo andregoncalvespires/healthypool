@@ -2,6 +2,9 @@
 
 Base de cálculo, com produtos Genco:
 
+As taxas vêm das fichas dos produtos (``catalog.py`` e ``products/*.json``). Com os produtos
+Genco padrão:
+
 * Alcalinidade baixa -> pH Certo (bicarbonato de sódio): 1,7 g/m³ para cada 1 ppm
   (rótulo: 17 g/m³ elevam 10 ppm).
 * Alcalinidade alta -> pH Menos (ácido líquido): 1 ml/m³ para cada 1 ppm
@@ -20,10 +23,15 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-PRODUCT_ALK_UP = "pH Certo"
-PRODUCT_PH_UP = "pH Mais"
-PRODUCT_PH_DOWN = "pH Menos"
-PRODUCT_CHLORINE = "Cloro granulado"
+from .catalog import (
+    ROLE_ACID,
+    ROLE_ALK_UP,
+    ROLE_CHLORINE,
+    ROLE_PH_UP,
+    Product,
+    ProductSet,
+    default_products,
+)
 
 STATUS_OK = "ok"
 STATUS_LOW = "low"
@@ -38,23 +46,7 @@ OVERALL_PENDING = "Aguardando nova medição"
 OVERALL_INCOMPLETE = "Medição incompleta"
 OVERALL_NO_DATA = "Sem medição"
 
-# Quanto esperar antes de medir de novo, segundo os rótulos Genco:
-# pH Mais: testar o pH 1 h depois; pH Menos e pH Certo: reanalisar no dia seguinte;
-# cloro: analisar o residual antes da próxima aplicação diária.
-REMEASURE_HOURS = {
-    PRODUCT_PH_UP: 1,
-    PRODUCT_ALK_UP: 24,
-    PRODUCT_PH_DOWN: 24,
-    PRODUCT_CHLORINE: 24,
-}
-
-ALK_UP_G_PER_M3_PER_PPM = 1.7
-ALK_DOWN_ML_PER_M3_PER_PPM = 1.0
-PH_DOWN_ML_PER_M3_MILD = 10.0  # pH até 8,0
-PH_DOWN_ML_PER_M3_STRONG = 20.0  # pH acima de 8,0
-ACID_MAX_ML_PER_M3_PER_APPLICATION = 20.0
 SODA_ASH_G_PER_MOL = 105.99
-DICHLOR_AVAILABLE_CHLORINE = 0.56
 
 
 @dataclass(frozen=True)
@@ -85,6 +77,7 @@ class Recommendation:
     unit: str | None = None
     applications: int = 1
     note: str | None = None
+    role: str | None = None  # função do produto (ver catalog.py)
 
     @property
     def per_application(self) -> float:
@@ -123,8 +116,9 @@ class Analysis:
                 return rec.message
         return None
 
-    def amount_for(self, product: str) -> float:
-        return sum(r.amount for r in self.recommendations if r.product == product)
+    def amount_for(self, role: str) -> float:
+        """Quantidade total pedida para um produto, pela função (alk_up, acid, ph_up, chlorine)."""
+        return sum(r.amount for r in self.recommendations if r.role == role)
 
 
 # ---------------------------------------------------------------------------
@@ -173,23 +167,19 @@ def soda_ash_grams_per_m3(
 
 
 # ---------------------------------------------------------------------------
-# Tabela do rótulo do pH Mais (barrilha) Genco: g/m³ para elevar o pH a 7,5
+# Tabela do rótulo do pH Mais (ficha do produto): g/m³ para elevar o pH à meta da tabela
 # ---------------------------------------------------------------------------
-PH_UP_LABEL_TARGET = 7.5
-PH_UP_LABEL_ALK = (80.0, 120.0)
-PH_UP_LABEL = (  # (pH atual, g/m³ com alcalinidade 80, g/m³ com alcalinidade 120)
-    (6.4, 46.0, 74.0),
-    (6.6, 38.0, 61.0),
-    (6.8, 30.0, 48.0),
-    (7.0, 21.0, 34.0),
-    (7.2, 13.0, 21.0),
-    (PH_UP_LABEL_TARGET, 0.0, 0.0),  # na meta não há dose
-)
+def _table(product: Product) -> tuple[float, tuple[float, float], list[tuple[float, float, float]]]:
+    d = product.dosing
+    rows = [(float(r[0]), float(r[1]), float(r[2])) for r in d["table"]]
+    rows.sort()
+    alk = d["table_alkalinity"]
+    return float(d["table_target_ph"]), (float(alk[0]), float(alk[1])), rows
 
 
-def _interp_ph(ph: float, column: int) -> float:
+def _interp_ph(ph: float, column: int, target: float, rows: list[tuple[float, float, float]]) -> float:
     """Interpola (ou extrapola nas pontas) a dose da tabela para um pH."""
-    pts = [(row[0], row[column]) for row in PH_UP_LABEL]
+    pts = [(row[0], row[column]) for row in rows] + [(target, 0.0)]  # na meta não há dose
     if ph >= pts[-1][0]:
         return 0.0
     if ph <= pts[0][0]:
@@ -201,31 +191,42 @@ def _interp_ph(ph: float, column: int) -> float:
     return y0 + (y1 - y0) * (ph - x0) / (x1 - x0)
 
 
-def label_ph_up_g_per_m3(alk_ppm: float, ph_now: float) -> float:
-    """Dose de pH Mais (g/m³) da tabela Genco para chegar a pH 7,5.
+def label_ph_up_g_per_m3(alk_ppm: float, ph_now: float, product: Product | None = None) -> float:
+    """Dose de pH Mais (g/m³) da tabela do produto para chegar ao pH da tabela.
 
-    Interpola entre as colunas de alcalinidade 80 e 120 ppm (e extrapola
-    linearmente fora delas) e entre as linhas de pH.
+    Interpola entre as colunas de alcalinidade da tabela (e extrapola linearmente fora
+    delas) e entre as linhas de pH.
     """
-    low = _interp_ph(ph_now, 1)
-    high = _interp_ph(ph_now, 2)
-    a0, a1 = PH_UP_LABEL_ALK
+    product = product or default_products().ph_up
+    target, (a0, a1), rows = _table(product)
+    low = _interp_ph(ph_now, 1, target, rows)
+    high = _interp_ph(ph_now, 2, target, rows)
     value = low + (high - low) * (alk_ppm - a0) / (a1 - a0)
     return max(value, 0.0)
 
 
 def ph_up_g_per_m3(
-    alk_ppm: float, ph_now: float, ph_target: float, temp_c: float = 25.0
+    alk_ppm: float,
+    ph_now: float,
+    ph_target: float,
+    temp_c: float = 25.0,
+    product: Product | None = None,
 ) -> float:
-    """Dose de pH Mais (g/m³): tabela do rótulo, ajustada se a meta não for 7,5."""
-    base = label_ph_up_g_per_m3(alk_ppm, ph_now)
-    if abs(ph_target - PH_UP_LABEL_TARGET) < 1e-9 or base <= 0:
+    """Dose de pH Mais (g/m³): tabela do produto, ajustada se a meta não for a da tabela."""
+    product = product or default_products().ph_up
+    table_target = _table(product)[0]
+    base = label_ph_up_g_per_m3(alk_ppm, ph_now, product)
+    if abs(ph_target - table_target) < 1e-9 or base <= 0:
         return base
-    ref = soda_ash_grams_per_m3(alk_ppm, ph_now, PH_UP_LABEL_TARGET, temp_c)
-    alt = soda_ash_grams_per_m3(alk_ppm, ph_now, ph_target, temp_c)
-    if ref <= 0:
-        return base
-    return base * alt / ref
+    if product.dosing.get("chemistry") == "sodium_carbonate":
+        ref = soda_ash_grams_per_m3(alk_ppm, ph_now, table_target, temp_c)
+        alt = soda_ash_grams_per_m3(alk_ppm, ph_now, ph_target, temp_c)
+        if ref <= 0:
+            return base
+        return base * alt / ref
+    # sem modelo químico: proporcional à distância até a meta
+    span = table_target - ph_now
+    return base * max(ph_target - ph_now, 0.0) / span if span > 0 else base
 
 
 # ---------------------------------------------------------------------------
@@ -250,31 +251,46 @@ def _unknown(parameter: str) -> Recommendation:
 # ---------------------------------------------------------------------------
 # Regras por parâmetro
 # ---------------------------------------------------------------------------
-def _alkalinity(volume: float, alk: float | None, t: Targets) -> Recommendation:
+def _ph_down_rate(acid: Product, ph: float) -> float:
+    """mL/m³ de ácido para pH alto, pelos degraus da ficha (up_to_ph em ordem crescente)."""
+    steps = acid.dosing["ph_steps"]
+    for step in steps:
+        limit = step.get("up_to_ph")
+        if limit is None or ph <= float(limit):
+            return float(step["ml_per_m3"])
+    return float(steps[-1]["ml_per_m3"])
+
+
+def _alkalinity(volume: float, alk: float | None, t: Targets, P: ProductSet) -> Recommendation:
     if alk is None:
         return _unknown("alcalinidade")
     if alk < t.alk_min:
-        total = _round_amount((t.alk_target - alk) * ALK_UP_G_PER_M3_PER_PPM * volume)
+        up = P.alk_up
+        rate = float(up.dosing["g_per_m3_per_ppm"])
+        total = _round_amount((t.alk_target - alk) * rate * volume)
         return Recommendation(
             "alcalinidade",
             STATUS_LOW,
-            f"Adicionar {_fmt(total, 'g')} de {PRODUCT_ALK_UP}",
-            PRODUCT_ALK_UP,
+            f"Adicionar {_fmt(total, up.unit)} de {up.text_name}",
+            up.name,
             total,
-            "g",
+            up.unit,
+            role=ROLE_ALK_UP,
         )
     if alk > t.alk_max:
-        total = _round_amount((alk - t.alk_target) * ALK_DOWN_ML_PER_M3_PER_PPM * volume)
-        max_single = ACID_MAX_ML_PER_M3_PER_APPLICATION * volume
+        acid = P.acid
+        rate = float(acid.dosing["alkalinity_ml_per_m3_per_ppm"])
+        total = _round_amount((alk - t.alk_target) * rate * volume)
+        max_single = float(acid.dosing["max_ml_per_m3_per_application"]) * volume
         apps = max(1, math.ceil(total / max_single)) if max_single else 1
-        message = f"Adicionar {_fmt(total, 'ml')} de {PRODUCT_PH_DOWN}"
+        message = f"Adicionar {_fmt(total, 'ml')} de {acid.text_name}"
         note = None
         if apps > 1:
             part = _round_amount(total / apps)
             message += f" em {apps} aplicações de {_fmt(part, 'ml')}, uma por dia"
             note = "Uma aplicação por dia: reanalise no dia seguinte e repita se preciso (rótulo)."
         return Recommendation(
-            "alcalinidade", STATUS_HIGH, message, PRODUCT_PH_DOWN, total, "ml", apps, note
+            "alcalinidade", STATUS_HIGH, message, acid.name, total, acid.unit, apps, note, ROLE_ACID
         )
     return Recommendation("alcalinidade", STATUS_OK, "Alcalinidade OK")
 
@@ -286,6 +302,7 @@ def _ph(
     alk_rec: Recommendation,
     t: Targets,
     temp_c: float,
+    P: ProductSet,
 ) -> Recommendation:
     if ph is None:
         return _unknown("ph")
@@ -296,42 +313,49 @@ def _ph(
             "ph", STATUS_BLOCKED, "Ajuste a alcalinidade antes de corrigir o pH"
         )
     if ph > t.ph_max:
-        per_m3 = PH_DOWN_ML_PER_M3_MILD if ph <= 8.0 else PH_DOWN_ML_PER_M3_STRONG
+        acid = P.acid
+        per_m3 = _ph_down_rate(acid, ph)
         total = _round_amount(per_m3 * volume)
         return Recommendation(
             "ph",
             STATUS_HIGH,
-            f"Adicionar {_fmt(total, 'ml')} de {PRODUCT_PH_DOWN}",
-            PRODUCT_PH_DOWN,
+            f"Adicionar {_fmt(total, 'ml')} de {acid.text_name}",
+            acid.name,
             total,
-            "ml",
+            acid.unit,
+            role=ROLE_ACID,
         )
     # pH baixo
     if alk is None:
         return Recommendation(
-            "ph", STATUS_BLOCKED, "Informe a alcalinidade para calcular o pH Mais"
+            "ph", STATUS_BLOCKED, f"Informe a alcalinidade para calcular o {P.ph_up.name}"
         )
-    per_m3 = ph_up_g_per_m3(alk, ph, t.ph_target, temp_c) * t.ph_up_factor
+    up = P.ph_up
+    per_m3 = ph_up_g_per_m3(alk, ph, t.ph_target, temp_c, up) * t.ph_up_factor
     total = _round_amount(per_m3 * volume)
+    wait = up.remeasure_hours
+    retest = f"; teste o pH {wait:g} h depois da aplicação" if wait > 0 else ""
     return Recommendation(
         "ph",
         STATUS_LOW,
-        f"Adicionar {_fmt(total, 'g')} de {PRODUCT_PH_UP}",
-        PRODUCT_PH_UP,
+        f"Adicionar {_fmt(total, up.unit)} de {up.text_name}",
+        up.name,
         total,
-        "g",
-        note="Dose da tabela do rótulo Genco; teste o pH 1 h depois da aplicação.",
+        up.unit,
+        note=f"Dose da tabela do rótulo {up.brand}{retest}.",
+        role=ROLE_PH_UP,
     )
 
 
 def _chlorine(
-    volume: float, cl: float | None, ph: float | None, t: Targets
+    volume: float, cl: float | None, ph: float | None, t: Targets, P: ProductSet
 ) -> Recommendation:
     if cl is None:
         return _unknown("cloro")
     if cl < t.cl_min:
+        chlorine = P.chlorine
         total = _round_amount(
-            (t.cl_target - cl) * volume / DICHLOR_AVAILABLE_CHLORINE
+            (t.cl_target - cl) * volume / float(chlorine.dosing["available_chlorine"])
         )
         note = None
         if ph is not None and ph > t.ph_max:
@@ -339,11 +363,12 @@ def _chlorine(
         return Recommendation(
             "cloro",
             STATUS_LOW,
-            f"Adicionar {_fmt(total, 'g')} de cloro granulado (dicloro)",
-            PRODUCT_CHLORINE,
+            f"Adicionar {_fmt(total, chlorine.unit)} de {chlorine.text_name}",
+            chlorine.name,
             total,
-            "g",
+            chlorine.unit,
             note=note,
+            role=ROLE_CHLORINE,
         )
     if cl > t.cl_max:
         return Recommendation(
@@ -362,14 +387,16 @@ def analyze(
     targets: Targets | None = None,
     temp_c: float | None = None,
     treatment_pending: bool | set[str] = False,
+    products: ProductSet | None = None,
 ) -> Analysis:
     """Analisa as medições e devolve as recomendações."""
     t = targets or Targets()
     temp = 25.0 if temp_c is None else min(max(temp_c, 5.0), 40.0)
 
-    alk_rec = _alkalinity(volume_m3, alkalinity, t)
-    ph_rec = _ph(volume_m3, alkalinity, ph, alk_rec, t, temp)
-    cl_rec = _chlorine(volume_m3, chlorine, ph, t)
+    P = products or default_products()
+    alk_rec = _alkalinity(volume_m3, alkalinity, t, P)
+    ph_rec = _ph(volume_m3, alkalinity, ph, alk_rec, t, temp, P)
+    cl_rec = _chlorine(volume_m3, chlorine, ph, t, P)
     recs = [alk_rec, ph_rec, cl_rec]
 
     if treatment_pending:
@@ -384,6 +411,7 @@ def analyze(
                 rec.status = STATUS_PENDING
                 rec.message = "Aguardando nova medição após o tratamento"
                 rec.product = None
+                rec.role = None
                 rec.amount = 0.0
                 rec.unit = None
                 rec.applications = 1
@@ -422,6 +450,7 @@ def cap_chlorine(analysis: Analysis, chlorine: float | None, cap: float, reason:
         rec.status = STATUS_OK
         rec.message = f"Cloro OK para o tratamento ({reason}: máximo {cap:g} ppm)"
     rec.product = None
+    rec.role = None
     rec.amount = 0.0
     rec.unit = None
     rec.applications = 1

@@ -13,17 +13,14 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTemperature, UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.util import dt as dt_util
+from homeassistant.util import dt as dt_util, slugify
 
 from .const import DOMAIN
+from .catalog import ROLE_ACID, ROLE_ALK_UP, ROLE_CHLORINE, ROLE_PH_UP
 from .dosing import (
     OVERALL_OK,
     OVERALL_PENDING,
     OVERALL_TREAT,
-    PRODUCT_ALK_UP,
-    PRODUCT_CHLORINE,
-    PRODUCT_PH_DOWN,
-    PRODUCT_PH_UP,
     Recommendation,
 )
 from .entity import PoolEntity
@@ -40,10 +37,10 @@ async def async_setup_entry(
         CorrectionSensor(manager, "correction_alkalinity", "Correção alcalinidade", "alkalinity"),
         CorrectionSensor(manager, "correction_ph", "Correção pH", "ph"),
         CorrectionSensor(manager, "correction_chlorine", "Correção cloro", "chlorine"),
-        DoseSensor(manager, "dose_ph_certo", "Adicionar pH Certo", PRODUCT_ALK_UP, "g", "mdi:cup-water"),
-        DoseSensor(manager, "dose_ph_mais", "Adicionar pH Mais", PRODUCT_PH_UP, "g", "mdi:cup-water"),
-        DoseSensor(manager, "dose_ph_menos", "Adicionar pH Menos", PRODUCT_PH_DOWN, "mL", "mdi:beaker-minus"),
-        DoseSensor(manager, "dose_cloro", "Adicionar cloro", PRODUCT_CHLORINE, "g", "mdi:water-plus"),
+        DoseSensor(manager, "dose_ph_certo", ROLE_ALK_UP, "mdi:cup-water"),
+        DoseSensor(manager, "dose_ph_mais", ROLE_PH_UP, "mdi:cup-water"),
+        DoseSensor(manager, "dose_ph_menos", ROLE_ACID, "mdi:beaker-minus"),
+        DoseSensor(manager, "dose_cloro", ROLE_CHLORINE, "mdi:water-plus"),
         LastTreatmentSensor(manager),
         RemeasureSensor(manager),
         MaintenanceSensor(manager, "algaecide", "Algicida", "algaecide", "mdi:bacteria-outline"),
@@ -175,27 +172,43 @@ class CorrectionSensor(PoolEntity, SensorEntity):
         }
 
 
-class DoseSensor(PoolEntity, SensorEntity):
-    """Quantidade numérica (g ou mL) de um produto a adicionar."""
+_DOSE_OBJECT_IDS = {
+    ROLE_ALK_UP: "adicionar_ph_certo",
+    ROLE_PH_UP: "adicionar_ph_mais",
+    ROLE_ACID: "adicionar_ph_menos",
+    ROLE_CHLORINE: "adicionar_cloro",
+}
 
-    def __init__(
-        self,
-        manager: PoolManager,
-        key: str,
-        name: str,
-        product: str,
-        unit: str,
-        icon: str,
-    ) -> None:
-        super().__init__(manager, key, name)
-        self._product = product
-        self._attr_native_unit_of_measurement = unit
+
+class DoseSensor(PoolEntity, SensorEntity):
+    """Quantidade numérica (g ou mL) do produto escolhido para uma função."""
+
+    def __init__(self, manager: PoolManager, key: str, role: str, icon: str) -> None:
+        super().__init__(manager, key, f"Adicionar {manager.products[role].name}")
+        # O entity_id não depende da marca escolhida: os cards continuam valendo se o produto mudar.
+        self.entity_id = f"sensor.{slugify(manager.entry.title)}_{_DOSE_OBJECT_IDS[role]}"
+        self._role = role
         self._attr_icon = icon
         self._attr_suggested_display_precision = 0
 
     @property
+    def name(self) -> str:
+        if self._role == ROLE_CHLORINE:
+            return "Adicionar cloro"
+        return f"Adicionar {self.manager.products[self._role].name}"
+
+    @property
+    def native_unit_of_measurement(self) -> str:
+        return self.manager.products[self._role].unit
+
+    @property
     def native_value(self) -> float:
-        return self.manager.analysis.amount_for(self._product)
+        return self.manager.analysis.amount_for(self._role)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        product = self.manager.products[self._role]
+        return {"produto": product.name, "marca": product.brand, "ficha": product.id}
 
 
 class LastTreatmentSensor(PoolEntity, SensorEntity):

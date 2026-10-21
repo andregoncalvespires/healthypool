@@ -12,7 +12,6 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, SERVICE_RECORD_MEASUREMENT, SERVICE_RECORD_STEP
-from .treatment import PRODUCT_NAMES
 from .pool import PoolManager
 
 PLATFORMS: list[Platform] = [
@@ -38,7 +37,7 @@ SERVICE_SCHEMA = vol.Schema(
 STEP_SCHEMA = vol.Schema(
     {
         vol.Optional("entry_id"): cv.string,
-        vol.Optional("produto"): vol.In(list(PRODUCT_NAMES)),
+        vol.Optional("produto"): cv.string,
         vol.Optional("quantidade"): vol.All(vol.Coerce(float), vol.Range(min=0)),
     }
 )
@@ -75,10 +74,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def _record_step(call: ServiceCall) -> None:
         manager = _get_manager(hass, call.data.get("entry_id"))
         product = call.data.get("produto")
-        manager.register_step(
-            key=PRODUCT_NAMES[product] if product else None,
-            amount=call.data.get("quantidade"),
-        )
+        key = manager.resolve_product(product) if product else None
+        if product and key is None:
+            raise ServiceValidationError(f"Produto desconhecido: {product}")
+        manager.register_step(key=key, amount=call.data.get("quantidade"))
 
     hass.services.async_register(
         DOMAIN, SERVICE_RECORD_MEASUREMENT, _record, schema=SERVICE_SCHEMA

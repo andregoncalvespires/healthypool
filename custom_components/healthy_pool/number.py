@@ -11,7 +11,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import DOMAIN
 from .entity import PoolEntity
 from .pool import PoolManager
-from .treatment import PRODUCTS
 
 
 @dataclass(frozen=True)
@@ -126,7 +125,7 @@ class PoolAppliedAmountNumber(PoolEntity, NumberEntity):
     @property
     def native_unit_of_measurement(self) -> str | None:
         key = self.manager.effective_product
-        return PRODUCTS[key].unit if key else None
+        return self.manager.products[key].unit if key else None
 
     @property
     def native_value(self) -> float:

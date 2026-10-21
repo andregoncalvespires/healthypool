@@ -1,0 +1,32 @@
+{
+  "id": "genco_ph_menos",
+  "brand": "Genco",
+  "name": "pH Menos",
+  "role": "acid",
+  "unit": "mL",
+  "remeasure_hours": 24,
+  "dosing": {
+    "alkalinity_ml_per_m3_per_ppm": 1.0,
+    "ph_steps": [
+      {
+        "up_to_ph": 8.0,
+        "ml_per_m3": 10
+      },
+      {
+        "ml_per_m3": 20
+      }
+    ],
+    "max_ml_per_m3_per_application": 20,
+    "label_min_ph": 7.8
+  },
+  "instructions": [
+    "Use máscara, luvas e óculos de proteção.",
+    "Dilua a dose em um balde plástico com água da piscina (sempre o produto na água, nunca o inverso).",
+    "Espalhe sobre a superfície com a válvula em Filtrar e mantenha a filtração por 30 a 60 min.",
+    "No dia seguinte, reanalise o pH e a alcalinidade; se ainda estiverem fora da faixa, repita."
+  ],
+  "source": "Rótulo Genco pH Menos: 10 mL/m³ a cada 10 ppm de alcalinidade; 10 mL/m³ (pH 7,8 a 8,0) ou 20 mL/m³ (acima de 8,0). O limite de 20 mL/m³ por aplicação é precaução do autor da integração.",
+  "rules": {
+    "release_minutes": 30
+  }
+}

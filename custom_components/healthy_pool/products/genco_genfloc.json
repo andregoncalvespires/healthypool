@@ -1,0 +1,19 @@
+{
+  "id": "genco_genfloc",
+  "brand": "Genco",
+  "name": "Clarificante",
+  "role": "clarifier",
+  "unit": "mL",
+  "remeasure_hours": 0,
+  "dosing": {
+    "preventive_ml_per_m3": 1.5,
+    "corrective_ml_per_m3": 4.5,
+    "corrective_interval_days": 1,
+    "preventive_filter_hours": "1 a 2 h",
+    "corrective_filter_hours": "6 a 8 h"
+  },
+  "source": "Rótulo Genco Genfloc: preventivo 1,5 mL/m³ por semana; corretivo 3 a 6 mL/m³ em dose única.",
+  "rules": {
+    "release_minutes": 30
+  }
+}

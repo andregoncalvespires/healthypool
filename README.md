@@ -1,6 +1,6 @@
 # Healthy Pool
 
-Integração customizada do Home Assistant para a piscina de casa: calcula o **volume de água** pela geometria, analisa as medições do kit de gotas (**alcalinidade, pH e cloro livre**) e sugere **qual produto Genco adicionar e em que quantidade**.
+Integração customizada do Home Assistant para a piscina de casa: calcula o **volume de água** pela geometria, analisa as medições do kit de gotas (**alcalinidade, pH e cloro livre**) e sugere **qual produto adicionar e em que quantidade**. Os produtos Genco vêm prontos; outras marcas entram por fichas JSON.
 
 Projeto pessoal, sem fins comerciais e sem ligação com a Genco (veja o [aviso](#aviso)). Requer Home Assistant 2024.12 ou mais novo. Interface em português.
 
@@ -73,7 +73,7 @@ Depois, em **Configurar** na integração, dá para mudar as medidas da piscina,
 Serviços opcionais, úteis em atalhos e automações:
 
 * `healthy_pool.registrar_medicao`: informa alcalinidade, pH e cloro de uma vez.
-* `healthy_pool.registrar_etapa`: registra uma aplicação (`produto` e `quantidade`). Sem produto ou quantidade, usa a etapa sugerida.
+* `healthy_pool.registrar_etapa`: registra uma aplicação (`produto` e `quantidade`). O produto pode ser a função (`alk_up`, `acid`, `ph_up`, `chlorine`, `algaecide`, `clarifier`, `metals_remover`) ou o nome do produto. Sem produto ou quantidade, usa a etapa sugerida.
 
 ## Tratamento por etapas
 
@@ -93,6 +93,24 @@ Observações:
 * Para algicida, clarificante e removedor de metais não há variação numérica: o histórico guarda o aspecto da água antes e depois, quando você mudar o seletor **Aspecto da água**.
 * O removedor de metais registrado mantém, por 7 dias, o cloro limitado a 1 ppm e sem choque.
 * Um tratamento fica aberto até todos os parâmetros tratados serem medidos de novo, ou até 48 h sem novas etapas.
+
+## Produtos e outras marcas
+
+Os produtos (dose, esperas, regras e instruções) ficam em fichas JSON, não no código. Os produtos Genco vêm embutidos. Em **Configurar → Produtos** você escolhe, para cada função, qual produto usa:
+
+| Função | Genco (padrão) |
+|---|---|
+| Subir alcalinidade | pH Certo |
+| Baixar alcalinidade e pH | pH Menos |
+| Subir pH | pH Mais |
+| Cloro | Cloro granulado (dicloro 56 %) |
+| Algicida | Algicida de manutenção e de choque |
+| Clarificante | Genfloc |
+| Removedor de metais | Genquest |
+
+Para usar outra marca, crie a pasta `healthy_pool_products` na configuração do Home Assistant e coloque nela a ficha do produto. O formato está em [`custom_components/healthy_pool/products/README.md`](custom_components/healthy_pool/products/README.md). Contribuições com fichas de outras marcas são bem-vindas (pull request, com a fonte dos dados).
+
+Nomes de sensores e botões não mudam ao trocar o produto (por exemplo, `sensor.piscina_adicionar_ph_certo` passa a mostrar o produto escolhido para subir a alcalinidade), então os cards continuam valendo.
 
 ## Como as doses são calculadas
 
@@ -280,6 +298,10 @@ python3 -m pytest tests -q
 ## Aviso
 
 * Projeto pessoal, **sem fins comerciais**, sem afiliação, patrocínio ou endosso da Genco. Os nomes de produtos e marcas pertencem aos seus fabricantes e são citados apenas como referência de dosagem.
-* As doses, intervalos e regras vêm dos rótulos e tabelas dos produtos Genco usados pelo autor. Alguns limites são precaução do autor (por exemplo, no máximo 20 mL/m³ de pH Menos por aplicação).
+* As doses, intervalos e regras vêm das fichas dos produtos. As fichas embutidas reproduzem os rótulos e tabelas dos produtos Genco usados pelo autor. Alguns limites são precaução do autor (por exemplo, no máximo 20 mL/m³ de pH Menos por aplicação).
 * A integração é uma **ajuda de cálculo e acompanhamento**, não substitui o rótulo nem orientação profissional. **Confira sempre a embalagem antes de aplicar.** Uso por sua conta e risco.
 * Produtos químicos de piscina são perigosos: nunca misture produtos, use proteção e siga as instruções do fabricante.
+
+## Licença
+
+[MIT](LICENSE).
