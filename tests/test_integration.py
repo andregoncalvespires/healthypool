@@ -1,5 +1,6 @@
 """Testes de integração com o Home Assistant (pytest-homeassistant-custom-component)."""
 import pytest
+import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -12,6 +13,14 @@ from custom_components.healthy_pool.const import (
 )
 
 
+# Piscina usada nos testes (retangular, área rasa e escada); não é padrão da integração.
+POOL = {
+    "length_cm": 700, "width_cm": 395, "shallow_length_cm": 200,
+    "shallow_depth_cm": 45, "deep_depth_cm": 155, "stair_steps": 3,
+    "stair_tread_cm": 37, "stair_width_cm": 90,
+}
+
+
 @pytest.fixture(autouse=True)
 def _enable(enable_custom_integrations):
     yield
@@ -19,7 +28,7 @@ def _enable(enable_custom_integrations):
 
 async def _setup(hass: HomeAssistant, **extra) -> MockConfigEntry:
     entry = MockConfigEntry(
-        domain=DOMAIN, title="Piscina", data={**DEFAULTS, CONF_NAME: "Piscina", **extra}
+        domain=DOMAIN, title="Piscina", data={**DEFAULTS, **POOL, CONF_NAME: "Piscina", **extra}
     )
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
@@ -157,10 +166,7 @@ async def test_config_flow_creates_entry(hass: HomeAssistant):
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "user"
 
-    geometry = {**{k: v for k, v in DEFAULTS.items() if k in (
-        "length_cm", "width_cm", "shallow_length_cm", "shallow_depth_cm",
-        "deep_depth_cm", "stair_steps", "stair_tread_cm", "stair_width_cm")},
-        CONF_NAME: "Piscina"}
+    geometry = {**POOL, CONF_NAME: "Piscina"}
     result = await hass.config_entries.flow.async_configure(result["flow_id"], geometry)
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "products"
@@ -175,6 +181,25 @@ async def test_config_flow_creates_entry(hass: HomeAssistant):
     assert result["title"] == "Piscina"
     assert result["data"]["stair_steps"] == 3
     assert result["data"]["product_alk_up"] == "genco_ph_certo"
+
+
+async def test_config_flow_has_no_default_dimensions(hass: HomeAssistant):
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    for key, marker in result["data_schema"].schema.items():
+        if key in ("length_cm", "width_cm", "deep_depth_cm"):
+            assert key.default is vol.UNDEFINED
+    empty = {CONF_NAME: "Piscina"}
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], empty)
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"] == {"base": "invalid_geometry"}
+
+
+async def test_config_flow_manual_volume_needs_no_dimensions(hass: HomeAssistant):
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_NAME: "Piscina", "shape": "manual", "manual_volume_m3": 30}
+    )
+    assert result["step_id"] == "products"
 
 
 async def test_config_flow_rejects_bad_geometry(hass: HomeAssistant):
@@ -198,9 +223,7 @@ async def test_options_flow_updates_geometry(hass: HomeAssistant):
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert result["step_id"] == "init"
-    geometry = {k: v for k, v in DEFAULTS.items() if k in (
-        "length_cm", "width_cm", "shallow_length_cm", "shallow_depth_cm",
-        "deep_depth_cm", "stair_steps", "stair_tread_cm", "stair_width_cm")}
+    geometry = dict(POOL)
     geometry["length_cm"] = 800
     result = await hass.config_entries.options.async_configure(result["flow_id"], geometry)
     assert result["step_id"] == "products"
@@ -491,7 +514,7 @@ async def test_green_algae_uses_shock_and_chlorine_is_normal(hass: HomeAssistant
 async def test_legacy_green_aspect_and_ph_up_from_label_table(hass: HomeAssistant):
     from homeassistant.helpers.storage import Store
 
-    entry = MockConfigEntry(domain=DOMAIN, title="Piscina", data={**DEFAULTS, CONF_NAME: "Piscina"})
+    entry = MockConfigEntry(domain=DOMAIN, title="Piscina", data={**DEFAULTS, **POOL, CONF_NAME: "Piscina"})
     entry.add_to_hass(hass)
     await Store(hass, 1, f"{DOMAIN}.{entry.entry_id}").async_save({"aspect": "Verde"})
     assert await hass.config_entries.async_setup(entry.entry_id)
@@ -815,7 +838,7 @@ async def test_register_step_accepts_role_name_or_legacy_key(hass: HomeAssistant
 
 
 async def test_legacy_stored_keys_are_migrated(hass: HomeAssistant, hass_storage):
-    entry = MockConfigEntry(domain=DOMAIN, title="Piscina", data={**DEFAULTS, CONF_NAME: "Piscina"})
+    entry = MockConfigEntry(domain=DOMAIN, title="Piscina", data={**DEFAULTS, **POOL, CONF_NAME: "Piscina"})
     entry.add_to_hass(hass)
     hass_storage[f"{DOMAIN}.{entry.entry_id}"] = {
         "version": 1,

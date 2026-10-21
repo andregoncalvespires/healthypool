@@ -180,14 +180,14 @@ class PoolManager:
     def geometry(self) -> PoolGeometry:
         c = self.cfg
         return PoolGeometry(
-            length_cm=float(c[CONF_LENGTH]),
-            width_cm=float(c[CONF_WIDTH]),
-            shallow_length_cm=float(c[CONF_SHALLOW_LENGTH]),
-            shallow_depth_cm=float(c[CONF_SHALLOW_DEPTH]),
-            deep_depth_cm=float(c[CONF_DEEP_DEPTH]),
-            stair_steps=int(c[CONF_STAIR_STEPS]),
-            stair_tread_cm=float(c[CONF_STAIR_TREAD]),
-            stair_width_cm=float(c[CONF_STAIR_WIDTH]),
+            length_cm=float(c.get(CONF_LENGTH) or 0),
+            width_cm=float(c.get(CONF_WIDTH) or 0),
+            shallow_length_cm=float(c.get(CONF_SHALLOW_LENGTH) or 0),
+            shallow_depth_cm=float(c.get(CONF_SHALLOW_DEPTH) or 0),
+            deep_depth_cm=float(c.get(CONF_DEEP_DEPTH) or 0),
+            stair_steps=int(c.get(CONF_STAIR_STEPS) or 0),
+            stair_tread_cm=float(c.get(CONF_STAIR_TREAD) or 0),
+            stair_width_cm=float(c.get(CONF_STAIR_WIDTH) or 0),
             shape=str(c[CONF_SHAPE]),
             manual_volume_m3=float(c[CONF_MANUAL_VOLUME]),
         )

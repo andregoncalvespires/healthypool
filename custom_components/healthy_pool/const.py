@@ -63,15 +63,6 @@ DEFAULTS: dict[str, float | int | str] = {
     CONF_SHAPE: SHAPE_RECT,
     CONF_MANUAL_VOLUME: 0,
     **{f"{CONF_PRODUCT_PREFIX}{role}": pid for role, pid in DEFAULT_IDS.items()},
-    # Piscina do André: 395 x 700 cm, área rasa de 200 cm, escada de 3 degraus de 37 cm
-    CONF_LENGTH: 700,
-    CONF_WIDTH: 395,
-    CONF_SHALLOW_LENGTH: 200,
-    CONF_SHALLOW_DEPTH: 45,  # profundidade do piso da área rasa, medida da borda
-    CONF_DEEP_DEPTH: 155,  # profundidade total da parte funda, medida da borda
-    CONF_STAIR_STEPS: 3,
-    CONF_STAIR_TREAD: 37,
-    CONF_STAIR_WIDTH: 90,  # estimativa a partir do desenho; confirme na piscina
     CONF_FREEBOARD: 6.5,  # altura livre entre a água e a borda (5 a 8 cm)
     CONF_ALK_MIN: 80,
     CONF_ALK_TARGET: 100,

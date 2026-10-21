@@ -80,14 +80,32 @@ def _geometry_schema(values: dict[str, Any], with_name: bool) -> vol.Schema:
                 )
             ),
             vol.Required(CONF_MANUAL_VOLUME, default=values[CONF_MANUAL_VOLUME]): _num(0, 1000, 0.1, "m³"),
-            vol.Required(CONF_LENGTH, default=values[CONF_LENGTH]): _num(0, 3000, 1, "cm"),
-            vol.Required(CONF_WIDTH, default=values[CONF_WIDTH]): _num(0, 3000, 1, "cm"),
-            vol.Required(CONF_SHALLOW_LENGTH, default=values[CONF_SHALLOW_LENGTH]): _num(0, 3000, 1, "cm"),
-            vol.Required(CONF_SHALLOW_DEPTH, default=values[CONF_SHALLOW_DEPTH]): _num(0, 300, 1, "cm"),
-            vol.Required(CONF_DEEP_DEPTH, default=values[CONF_DEEP_DEPTH]): _num(0, 500, 1, "cm"),
-            vol.Required(CONF_STAIR_STEPS, default=values[CONF_STAIR_STEPS]): _num(0, 10, 1),
-            vol.Required(CONF_STAIR_TREAD, default=values[CONF_STAIR_TREAD]): _num(0, 100, 1, "cm"),
-            vol.Required(CONF_STAIR_WIDTH, default=values[CONF_STAIR_WIDTH]): _num(0, 1000, 1, "cm"),
+            # Sem valores padrão: as medidas são da piscina de cada pessoa.
+            vol.Optional(
+                CONF_LENGTH, description={"suggested_value": values.get(CONF_LENGTH)}
+            ): _num(0, 3000, 1, "cm"),
+            vol.Optional(
+                CONF_WIDTH, description={"suggested_value": values.get(CONF_WIDTH)}
+            ): _num(0, 3000, 1, "cm"),
+            vol.Optional(
+                CONF_DEEP_DEPTH, description={"suggested_value": values.get(CONF_DEEP_DEPTH)}
+            ): _num(0, 500, 1, "cm"),
+            # Opcionais: 0 = a piscina não tem área rasa nem escada.
+            vol.Optional(
+                CONF_SHALLOW_LENGTH, default=values.get(CONF_SHALLOW_LENGTH, 0)
+            ): _num(0, 3000, 1, "cm"),
+            vol.Optional(
+                CONF_SHALLOW_DEPTH, default=values.get(CONF_SHALLOW_DEPTH, 0)
+            ): _num(0, 300, 1, "cm"),
+            vol.Optional(
+                CONF_STAIR_STEPS, default=values.get(CONF_STAIR_STEPS, 0)
+            ): _num(0, 10, 1),
+            vol.Optional(
+                CONF_STAIR_TREAD, default=values.get(CONF_STAIR_TREAD, 0)
+            ): _num(0, 100, 1, "cm"),
+            vol.Optional(
+                CONF_STAIR_WIDTH, default=values.get(CONF_STAIR_WIDTH, 0)
+            ): _num(0, 1000, 1, "cm"),
             vol.Optional(
                 CONF_TEMP_ENTITY,
                 description={"suggested_value": values.get(CONF_TEMP_ENTITY)},
@@ -142,20 +160,21 @@ def _limits_schema(values: dict[str, Any]) -> vol.Schema:
 
 
 def _geometry_errors(d: dict[str, Any]) -> dict[str, str]:
+    g = {k: float(d.get(k) or 0) for k in _GEOMETRY_KEYS}
     shape = d.get(CONF_SHAPE, SHAPE_RECT)
     if shape == SHAPE_MANUAL:
-        return {} if d[CONF_MANUAL_VOLUME] > 0 else {"base": "invalid_geometry"}
-    bad = d[CONF_LENGTH] <= 0 or d[CONF_DEEP_DEPTH] <= 0
+        return {} if g[CONF_MANUAL_VOLUME] > 0 else {"base": "invalid_geometry"}
+    bad = g[CONF_LENGTH] <= 0 or g[CONF_DEEP_DEPTH] <= 0
     if shape == "oval":
-        bad = bad or d[CONF_WIDTH] <= 0
+        bad = bad or g[CONF_WIDTH] <= 0
     elif shape in (SHAPE_RECT, SHAPE_SLOPED):
-        bad = bad or d[CONF_WIDTH] <= 0 or d[CONF_DEEP_DEPTH] < d[CONF_SHALLOW_DEPTH]
+        bad = bad or g[CONF_WIDTH] <= 0 or g[CONF_DEEP_DEPTH] < g[CONF_SHALLOW_DEPTH]
     if shape == SHAPE_RECT and not bad:
-        steps = int(d[CONF_STAIR_STEPS])
+        steps = int(g[CONF_STAIR_STEPS])
         bad = (
-            d[CONF_SHALLOW_LENGTH] >= d[CONF_LENGTH]
-            or steps * d[CONF_STAIR_TREAD] > d[CONF_SHALLOW_LENGTH]
-            or d[CONF_STAIR_WIDTH] > d[CONF_WIDTH]
+            g[CONF_SHALLOW_LENGTH] >= g[CONF_LENGTH]
+            or steps * g[CONF_STAIR_TREAD] > g[CONF_SHALLOW_LENGTH]
+            or g[CONF_STAIR_WIDTH] > g[CONF_WIDTH]
         )
     return {"base": "invalid_geometry"} if bad else {}
 
@@ -169,8 +188,16 @@ def _limits_errors(d: dict[str, Any]) -> dict[str, str]:
     return {"base": "invalid_limits"} if bad else {}
 
 
+_GEOMETRY_KEYS = (
+    CONF_MANUAL_VOLUME, CONF_LENGTH, CONF_WIDTH, CONF_SHALLOW_LENGTH, CONF_SHALLOW_DEPTH,
+    CONF_DEEP_DEPTH, CONF_STAIR_STEPS, CONF_STAIR_TREAD, CONF_STAIR_WIDTH,
+)
+
+
 def _clean(user_input: dict[str, Any]) -> dict[str, Any]:
     out = dict(user_input)
+    for key in _GEOMETRY_KEYS:
+        out[key] = out.get(key) or 0
     out[CONF_STAIR_STEPS] = int(out[CONF_STAIR_STEPS])
     out[CONF_TEMP_ENTITY] = out.get(CONF_TEMP_ENTITY) or None
     return out

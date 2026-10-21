@@ -21,7 +21,7 @@ Projeto pessoal, sem fins comerciais e sem ligação com a Genco (veja o [aviso]
 ### Configuração
 
 1. Em **Configurações → Dispositivos e serviços → Adicionar integração**, procure por **Healthy Pool**.
-2. Escolha o **formato** da piscina e informe as medidas (os valores que vêm preenchidos são os da piscina do autor: troque pelos da sua) e as faixas de qualidade.
+2. Escolha o **formato** da piscina e informe as medidas (não há valores padrão: informe as medidas da sua piscina; área rasa e escada são opcionais, deixe 0 se não tiver) e as faixas de qualidade.
 
 Depois, em **Configurar** na integração, dá para mudar as medidas da piscina, o sensor de temperatura e as faixas a qualquer momento.
 
