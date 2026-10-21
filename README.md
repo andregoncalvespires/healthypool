@@ -302,6 +302,10 @@ python3 -m pytest tests -q
 * A integração é uma **ajuda de cálculo e acompanhamento**, não substitui o rótulo nem orientação profissional. **Confira sempre a embalagem antes de aplicar.** Uso por sua conta e risco.
 * Produtos químicos de piscina são perigosos: nunca misture produtos, use proteção e siga as instruções do fabricante.
 
+## Versões
+
+Ao subir o campo `version` do `manifest.json` na `main`, o workflow **Release** cria sozinho a tag `vX.Y.Z` e a release no GitHub, com as notas geradas pelos commits. O HACS passa a oferecer essa versão.
+
 ## Licença
 
 [MIT](LICENSE).

@@ -1,0 +1,35 @@
+name: Release
+
+# Cria a tag e a release (vX.Y.Z) quando a versão do manifest.json sobe na main.
+on:
+  push:
+    branches: [main]
+    paths:
+      - custom_components/healthy_pool/manifest.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Criar release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ler a versão do manifest
+        id: version
+        run: |
+          version=$(python3 -c "import json; print(json.load(open('custom_components/healthy_pool/manifest.json'))['version'])")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Criar a release se a tag ainda não existe
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          tag="v${VERSION}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "A release $tag já existe; nada a fazer."
+          else
+            gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --generate-notes
+          fi
